@@ -17,28 +17,77 @@ function toIST(date) {
   return new Date(date).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 }
 
+function normalizeLookupCandidate(value) {
+  return String(value || '').trim();
+}
+
+function extractLookupCandidates(scanText) {
+  const raw = normalizeLookupCandidate(scanText);
+  if (!raw) return [];
+
+  const seen = new Set();
+  const candidates = [];
+  const add = (value) => {
+    const normalized = normalizeLookupCandidate(value);
+    if (!normalized) return;
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      candidates.push(normalized);
+    }
+  };
+
+  add(raw);
+
+  const upperRaw = raw.toUpperCase();
+  if (upperRaw !== raw) add(upperRaw);
+
+  const prefixedMatch = raw.match(/^(?:MATGATE|MATGATE\||MG\|)\s*(MG-[A-Z0-9-]+)$/i);
+  if (prefixedMatch) {
+    add(prefixedMatch[1].toUpperCase());
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    add(parsed.issuanceId);
+    add(parsed.id);
+    add(parsed.lookupKey);
+  } catch (e) {
+    // Legacy scans may not be JSON; ignore parse failures.
+  }
+
+  return candidates;
+}
+
+async function resolveIssuance(scanText) {
+  const candidates = extractLookupCandidates(scanText);
+  if (!candidates.length) return null;
+
+  return Issuance.findOne({
+    $or: [
+      { issuanceId: { $in: candidates } },
+      { qrLookupValue: { $in: candidates } },
+      { qrPayload: { $in: candidates } }
+    ]
+  });
+}
+
 // Create issuance (Stores only)
-router.post('/', authMiddleware, async (req, res) => {
+router.post('/', authMiddleware, roleMiddleware('stores', 'admin'), async (req, res) => {
   try {
     const { materialCode, materialDescription, materialType, baseUoM, quantity, dmrNumber } = req.body;
     if (!materialCode || !quantity || !dmrNumber) {
       return res.status(400).json({ error: 'materialCode, quantity, and dmrNumber are required' });
     }
+    if (Number(quantity) <= 0) {
+      return res.status(400).json({ error: 'quantity must be greater than 0' });
+    }
 
     const issuanceId = generateIssuanceId();
     const issuedAt = new Date();
+    const qrLookupValue = issuanceId;
 
-    // QR payload
-    const qrPayload = JSON.stringify({
-      id: issuanceId,
-      mat: materialCode,
-      desc: materialDescription,
-      qty: quantity,
-      uom: baseUoM,
-      dmr: dmrNumber,
-      by: req.user.name,
-      at: toIST(issuedAt)
-    });
+    // Encode the canonical lookup key directly so the QR text matches the issuance lookup.
+    const qrPayload = qrLookupValue;
 
     // Generate QR code as data URL
     const qrCodeData = await QRCode.toDataURL(qrPayload, {
@@ -58,6 +107,7 @@ router.post('/', authMiddleware, async (req, res) => {
       issuedBy: req.user.username,
       issuedByName: req.user.name,
       issuedAt,
+      qrLookupValue,
       qrCodeData,
       qrPayload
     });
@@ -69,12 +119,12 @@ router.post('/', authMiddleware, async (req, res) => {
 });
 
 // Receive / confirm receipt (Production)
-router.post('/receive/:issuanceId', authMiddleware, async (req, res) => {
+router.post('/receive/:issuanceId', authMiddleware, roleMiddleware('production', 'admin'), async (req, res) => {
   try {
     const { receiptRemarks } = req.body;
     const issuance = await Issuance.findOne({ issuanceId: req.params.issuanceId });
     if (!issuance) return res.status(404).json({ error: 'Issuance not found' });
-    if (issuance.status === 'received') return res.status(400).json({ error: 'Already received' });
+    if (issuance.status !== 'issued') return res.status(400).json({ error: `Cannot receive a ${issuance.status} issuance` });
 
     issuance.status = 'received';
     issuance.receivedBy = req.user.username;
@@ -90,11 +140,15 @@ router.post('/receive/:issuanceId', authMiddleware, async (req, res) => {
 });
 
 // Reject receipt
-router.post('/reject/:issuanceId', authMiddleware, async (req, res) => {
+router.post('/reject/:issuanceId', authMiddleware, roleMiddleware('production', 'admin'), async (req, res) => {
   try {
     const { receiptRemarks } = req.body;
+    if (!String(receiptRemarks || '').trim()) {
+      return res.status(400).json({ error: 'receiptRemarks are required when rejecting an issuance' });
+    }
     const issuance = await Issuance.findOne({ issuanceId: req.params.issuanceId });
     if (!issuance) return res.status(404).json({ error: 'Issuance not found' });
+    if (issuance.status !== 'issued') return res.status(400).json({ error: `Cannot reject a ${issuance.status} issuance` });
 
     issuance.status = 'rejected';
     issuance.receivedBy = req.user.username;
@@ -109,10 +163,22 @@ router.post('/reject/:issuanceId', authMiddleware, async (req, res) => {
   }
 });
 
-// Scan / lookup by issuance ID (for QR scan result)
+// Scan / lookup by raw QR text or issuance ID
+router.post('/scan', authMiddleware, async (req, res) => {
+  try {
+    const { scanText } = req.body || {};
+    const issuance = await resolveIssuance(scanText);
+    if (!issuance) return res.status(404).json({ error: 'Issuance not found for scanned QR text' });
+    res.json(issuance);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Manual lookup by issuance ID (and backward-compatible legacy values)
 router.get('/scan/:issuanceId', authMiddleware, async (req, res) => {
   try {
-    const issuance = await Issuance.findOne({ issuanceId: req.params.issuanceId }).lean();
+    const issuance = await resolveIssuance(req.params.issuanceId);
     if (!issuance) return res.status(404).json({ error: 'Issuance not found' });
     res.json(issuance);
   } catch (e) {

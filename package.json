@@ -2,10 +2,10 @@
   "name": "matgate",
   "version": "1.0.0",
   "description": "Material Gate - Scan-based RM movement control system",
-  "main": "server.js",
+  "main": "server/server.js",
   "scripts": {
-    "start": "node server.js",
-    "seed": "node seed.js"
+    "start": "node server/server.js",
+    "seed": "node server/seed.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

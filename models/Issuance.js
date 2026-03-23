@@ -11,8 +11,9 @@ const issuanceSchema = new mongoose.Schema({
   issuedBy: { type: String, required: true },       // username
   issuedByName: { type: String, default: '' },
   issuedAt: { type: Date, default: Date.now },
+  qrLookupValue: { type: String, default: '' },     // canonical text encoded into QR
   qrCodeData: { type: String },                      // base64 QR image
-  qrPayload: { type: String },                       // JSON string encoded in QR
+  qrPayload: { type: String },                       // stored QR text (legacy or canonical)
 
   // Receipt tracking
   status: { type: String, enum: ['issued', 'received', 'rejected'], default: 'issued' },
@@ -24,6 +25,6 @@ const issuanceSchema = new mongoose.Schema({
 
 issuanceSchema.index({ materialCode: 1, issuedAt: -1 });
 issuanceSchema.index({ status: 1 });
-issuanceSchema.index({ issuanceId: 1 });
+issuanceSchema.index({ qrLookupValue: 1 });
 
 module.exports = mongoose.model('Issuance', issuanceSchema);
