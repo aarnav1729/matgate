@@ -165,7 +165,7 @@ function openPrintDocument(title, cardsMarkup) {
       <style>
         :root{color-scheme:light only}
         *{box-sizing:border-box}
-        body{margin:0;padding:24px;font-family:Inter,Arial,sans-serif;background:#eef4ff;color:#111827}
+        body{margin:0;padding:24px;font-family:'SF Pro Text','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','IBM Plex Sans',Arial,sans-serif;background:#eef4ff;color:#111827}
         .sheet-head{margin:0 auto 20px;max-width:1120px}
         .sheet-head h1{margin:0 0 6px;font-size:22px;letter-spacing:-.03em}
         .sheet-head p{margin:0;color:#5b6475;font-size:13px}
@@ -744,6 +744,35 @@ function getTutorialContent(page, role) {
             action: "Open History to inspect source labels, vendor details, remarks, and timestamps for any movement.",
             check: "Export only the filtered set you need.",
             outcome: "Audit and RCA stay focused and fast."
+          }
+        ]
+      }
+    },
+    flow: {
+      default: {
+        title: "Flow guide",
+        copy: "See the full operating flow from inward to receipt.",
+        steps: [
+          {
+            title: "Stores creates stock",
+            copy: "Inward is the start of traceability.",
+            action: "Create one stock label per pallet when raw material arrives and stick the labels before any issue happens.",
+            check: "Match the label count to the actual pallet count.",
+            outcome: "Each pallet has a live stock identity."
+          },
+          {
+            title: "Stores issues from stock",
+            copy: "Issue uses existing stock labels.",
+            action: "Select an active stock label and issue full or partial quantity to production.",
+            check: "If only part of the stock moves, print the balance label and replace the old pallet label.",
+            outcome: "The issue QR moves material and the stock label keeps the remaining balance."
+          },
+          {
+            title: "Production closes the handoff",
+            copy: "Receipt happens on the issue QR.",
+            action: "Production scans the issue QR, verifies the trace, then accepts or rejects with remarks.",
+            check: "Reject only when the physical handoff does not match the issue record.",
+            outcome: "Receipt timestamps and TAT remain accurate."
           }
         ]
       }
@@ -1451,6 +1480,12 @@ function Dashboard() {
 
   const quickActions = [
     {
+      key: "flow",
+      label: "Flow Guide",
+      icon: Icons.spark,
+      roles: ["stores", "production", "admin"]
+    },
+    {
       key: "inward",
       label: "Inward Labels",
       icon: Icons.layers,
@@ -1495,6 +1530,7 @@ function Dashboard() {
     ...action,
     copy:
       {
+        flow: "See the full operating model",
         inward: "Print pallet labels",
         issue: "Issue from stock",
         scan: "Receive issue QRs",
@@ -1544,7 +1580,7 @@ function Dashboard() {
                   type="button"
                   className={classNames(
                     "btn",
-                    action.key === "inward" ? "btn-primary" : "btn-secondary"
+                    action.key === "flow" ? "btn-primary" : "btn-secondary"
                   )}
                   onClick={() => navigate(action.key)}
                 >
@@ -1748,7 +1784,7 @@ function Dashboard() {
                       type="button"
                       className={classNames(
                         "btn",
-                        action.key === "inward" ? "btn-primary" : "btn-secondary",
+                        action.key === "flow" ? "btn-primary" : "btn-secondary",
                         "btn-sm"
                       )}
                       onClick={() => navigate(action.key)}
@@ -1918,6 +1954,246 @@ function Dashboard() {
                   »
                 </button>
               </div>
+            </div>
+          </section>
+        </Reveal>
+      </div>
+    </div>
+  );
+}
+
+function FlowGuide() {
+  const { navigate, user } = useContext(AppContext);
+
+  const stages = [
+    {
+      step: "01",
+      icon: Icons.layers,
+      owner: "Stores",
+      title: "Inward",
+      copy: "Create one stock label per pallet as soon as raw material arrives."
+    },
+    {
+      step: "02",
+      icon: Icons.send,
+      owner: "Stores",
+      title: "Issue",
+      copy: "Issue full or partial quantity from an active stock label."
+    },
+    {
+      step: "03",
+      icon: Icons.scan,
+      owner: "Production",
+      title: "Receive",
+      copy: "Production scans the issue QR and accepts or rejects the handoff."
+    },
+    {
+      step: "04",
+      icon: Icons.history,
+      owner: "Admin",
+      title: "Audit",
+      copy: "History and TAT show what moved, who touched it, and where delays happened."
+    }
+  ];
+
+  const teamLanes = [
+    {
+      title: "Stores team",
+      icon: Icons.layers,
+      steps: [
+        "Create inward labels for every arriving pallet.",
+        "Stick the stock label on the pallet before any issue.",
+        "Issue from active stock labels only.",
+        "If the issue is partial, print the balance label and replace the old pallet label."
+      ]
+    },
+    {
+      title: "Production team",
+      icon: Icons.scan,
+      steps: [
+        "Scan the issue QR, not the inward stock label.",
+        "Verify source label, quantity, vendor, and timestamps.",
+        "Accept to close the movement.",
+        "Reject only with remarks when the physical handoff is invalid."
+      ]
+    },
+    {
+      title: "Admin team",
+      icon: Icons.history,
+      steps: [
+        "Monitor active stock, pending receipts, and acceptance flow.",
+        "Use history for trace, remarks, and exports.",
+        "Use TAT to spot stores delay versus production delay.",
+        "Review the slowest and oldest open movements first."
+      ]
+    }
+  ];
+
+  const nextActions = [
+    { key: "inward", label: "Open Inward", roles: ["stores", "admin"] },
+    { key: "issue", label: "Open Issue", roles: ["stores", "admin"] },
+    { key: "scan", label: "Open Receive", roles: ["production", "admin"] },
+    { key: "history", label: "Open History", roles: ["stores", "production", "admin"] }
+  ].filter((item) => item.roles.includes(user.role));
+
+  return (
+    <div className="page-stack">
+      <Reveal>
+        <PageHero
+          eyebrow={
+            <>
+              {Icons.spark}
+              Shared Guide
+            </>
+          }
+          title="How MatGate works"
+          description="Shared operating flow for stores, production, and admin."
+          actions={
+            <>
+              {nextActions.map((action) => (
+                <button
+                  key={action.key}
+                  type="button"
+                  className={classNames("btn", action.key === "inward" ? "btn-primary" : "btn-secondary")}
+                  onClick={() => navigate(action.key)}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </>
+          }
+          stats={[
+            { label: "Start", value: "Inward labels", tone: "primary" },
+            { label: "Split", value: "Full or partial issue", tone: "warning" },
+            { label: "Close", value: "Production receipt", tone: "success" },
+            { label: "Audit", value: "History + TAT", tone: "danger" }
+          ]}
+        />
+      </Reveal>
+
+      <TutorialPanel page="flow" />
+
+      <Reveal delay={90}>
+        <section className="surface-card">
+          <div className="surface-header">
+            <div className="surface-title">
+              <h3>End-to-end flow</h3>
+              <p>Every team sees the same sequence.</p>
+            </div>
+          </div>
+          <div className="surface-body">
+            <div className="guide-step-grid">
+              {stages.map((stage) => (
+                <article key={stage.step} className="guide-step-card">
+                  <div className="guide-step-top">
+                    <span className="guide-step-index mono">{stage.step}</span>
+                    <div className="workflow-icon">{stage.icon}</div>
+                  </div>
+                  <div className="guide-step-owner">{stage.owner}</div>
+                  <h4>{stage.title}</h4>
+                  <p>{stage.copy}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      </Reveal>
+
+      <Reveal delay={130}>
+        <section className="surface-card alt">
+          <div className="surface-header">
+            <div className="surface-title">
+              <h3>What each team does</h3>
+              <p>Use this as the standard operating flow.</p>
+            </div>
+          </div>
+          <div className="surface-body">
+            <div className="guide-lane-grid">
+              {teamLanes.map((lane) => (
+                <article key={lane.title} className="guide-lane-card">
+                  <div className="guide-lane-head">
+                    <div className="workflow-icon">{lane.icon}</div>
+                    <h4>{lane.title}</h4>
+                  </div>
+                  <div className="guide-step-list">
+                    {lane.steps.map((step, index) => (
+                      <div key={step} className="guide-step-row">
+                        <span className="guide-step-dot mono">{String(index + 1).padStart(2, "0")}</span>
+                        <p>{step}</p>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      </Reveal>
+
+      <div className="detail-grid">
+        <Reveal delay={170}>
+          <section className="surface-card">
+            <div className="surface-header">
+              <div className="surface-title">
+                <h3>Partial issue example</h3>
+                <p>What happens when inward `100` and issue `50`.</p>
+              </div>
+            </div>
+            <div className="surface-body stack">
+              <div className="guide-step-grid guide-step-grid-example">
+                <article className="guide-step-card compact">
+                  <div className="guide-step-owner">Inward</div>
+                  <h4>Stock label created</h4>
+                  <p>`STK-...` starts with `100` available.</p>
+                </article>
+                <article className="guide-step-card compact">
+                  <div className="guide-step-owner">Issue</div>
+                  <h4>Issue QR created</h4>
+                  <p>A new issue QR is created for `50`.</p>
+                </article>
+                <article className="guide-step-card compact">
+                  <div className="guide-step-owner">Balance</div>
+                  <h4>Same stock label reprinted</h4>
+                  <p>The stock label stays the same ID, updates to `50`, and gets a higher revision.</p>
+                </article>
+              </div>
+
+              <DetailRows
+                items={[
+                  { label: "System update", value: "Original stock record updates from 100 to 50" },
+                  { label: "What gets printed", value: "1 issue QR + 1 balance stock label" },
+                  { label: "What stores replaces", value: "The old pallet label is replaced with the balance reprint" },
+                  { label: "If issued in full", value: "The stock label becomes depleted and no balance label is printed" }
+                ]}
+              />
+            </div>
+          </section>
+        </Reveal>
+
+        <Reveal delay={210}>
+          <section className="surface-card alt">
+            <div className="surface-header">
+              <div className="surface-title">
+                <h3>What the system records</h3>
+                <p>These timestamps feed history and analytics.</p>
+              </div>
+            </div>
+            <div className="surface-body stack">
+              <SummaryGrid
+                items={[
+                  { label: "Inward printed", value: "Stores prints the stock label" },
+                  { label: "Issued", value: "Stores creates the issue QR" },
+                  { label: "Accepted", value: "Production confirms receipt" },
+                  { label: "TAT", value: "Admin sees inward-to-issue, issue-to-accept, and total" }
+                ]}
+              />
+              <DetailRows
+                items={[
+                  { label: "Inward inputs", value: "Material, quantity per pallet, pallet count, DMR, DMR date, make, and vendor" },
+                  { label: "Timezone", value: "Operational print, issue, and receipt timestamps are shown in IST" },
+                  { label: "Admin view", value: "Analytics show open queues, slowest movements, and full end-to-end TAT" }
+                ]}
+              />
             </div>
           </section>
         </Reveal>
@@ -4678,6 +4954,16 @@ function AppShell({ user, onLogout }) {
       roles: ["stores", "production", "admin"]
     },
     {
+      key: "flow",
+      label: "Flow",
+      title: "Flow Guide",
+      section: "Overview",
+      hint: "Shared process guide",
+      group: "Overview",
+      icon: Icons.spark,
+      roles: ["stores", "production", "admin"]
+    },
+    {
       key: "masters",
       label: "Materials",
       title: "Material Master",
@@ -4746,6 +5032,8 @@ function AppShell({ user, onLogout }) {
 
   const renderPage = () => {
     switch (activePage) {
+      case "flow":
+        return <FlowGuide />;
       case "masters":
         return <MaterialMaster />;
       case "inward":
