@@ -1646,6 +1646,11 @@ tbody tr:last-child td {
   box-shadow: var(--shadow-sm);
 }
 
+.record-card.compact {
+  gap: 10px;
+  padding: 11px;
+}
+
 .record-card-head {
   display: flex;
   align-items: flex-start;
@@ -2211,50 +2216,115 @@ tbody tr:last-child td {
   outline: none;
 }
 
-.tutorial-panel {
-  padding: 16px;
+.tutorial-rail {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
   border-radius: 16px;
   border: 1px solid rgba(22, 124, 116, 0.14);
   background: linear-gradient(180deg, #f8fcfb 0%, #ffffff 100%);
   box-shadow: var(--shadow-sm);
 }
 
-.tutorial-head {
+.tutorial-rail-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.tutorial-rail-copy strong {
+  color: var(--ink);
+  font-size: 15px;
+  letter-spacing: -0.03em;
+}
+
+.tutorial-rail-copy span {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.tutorial-rail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.tutorial-rail-actions .btn {
+  width: 100%;
+}
+
+.walkthrough-modal-body {
+  gap: 18px;
+}
+
+.walkthrough-summary {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(22, 124, 116, 0.14);
+  background: linear-gradient(180deg, #f8fcfb 0%, #ffffff 100%);
+}
+
+.walkthrough-summary h4 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.04em;
+}
+
+.walkthrough-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.walkthrough-progress span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.walkthrough-progress span.active {
+  border-color: rgba(22, 124, 116, 0.16);
+  background: rgba(22, 124, 116, 0.1);
+  color: var(--primary-strong);
+}
+
+.walkthrough-shell {
   display: grid;
   gap: 14px;
 }
 
-.tutorial-head h3 {
-  margin: 10px 0 0;
-  font-size: 18px;
-  letter-spacing: -0.03em;
-}
-
-.tutorial-head p {
-  margin: 8px 0 0;
-  color: var(--ink-soft);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.tutorial-grid {
+.walkthrough-sidebar {
   display: grid;
-  grid-template-columns: 1fr;
   gap: 10px;
-  margin-top: 14px;
 }
 
-.tutorial-step {
+.walkthrough-nav-item {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 12px;
   padding: 14px;
-  border-radius: 12px;
+  border-radius: 14px;
   border: 1px solid var(--line);
   background: #ffffff;
+  text-align: left;
+  color: var(--ink);
+  box-shadow: var(--shadow-xs);
 }
 
-.tutorial-index {
+.walkthrough-nav-item.active {
+  border-color: rgba(22, 124, 116, 0.18);
+  background: rgba(22, 124, 116, 0.08);
+}
+
+.walkthrough-nav-index {
   width: 34px;
   height: 34px;
   display: grid;
@@ -2266,17 +2336,85 @@ tbody tr:last-child td {
   font-weight: 700;
 }
 
-.tutorial-step strong {
+.walkthrough-nav-item strong {
   display: block;
-  color: var(--ink);
   font-size: 14px;
 }
 
-.tutorial-step p {
+.walkthrough-nav-item p {
   margin: 6px 0 0;
   color: var(--ink-soft);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.55;
+}
+
+.walkthrough-stage {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+}
+
+.walkthrough-stage-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(22, 124, 116, 0.1);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.walkthrough-stage-head {
+  display: grid;
+  gap: 10px;
+}
+
+.walkthrough-stage-head h3 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.04em;
+}
+
+.walkthrough-stage-head p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.walkthrough-card-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.walkthrough-detail-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+}
+
+.walkthrough-detail-card span {
+  color: var(--ink-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.walkthrough-detail-card strong {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .nav-collapse-toggle {
@@ -2347,8 +2485,9 @@ tbody tr:last-child td {
     grid-template-columns: 1fr;
   }
 
-  .tutorial-head {
-    gap: 12px;
+  .tutorial-rail-copy span,
+  .walkthrough-progress span {
+    font-size: 11px;
   }
 }
 
@@ -2372,8 +2511,7 @@ tbody tr:last-child td {
   .trace-grid,
   .metric-grid,
   .workflow-grid,
-  .record-card-grid,
-  .tutorial-grid {
+  .record-card-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -2423,6 +2561,19 @@ tbody tr:last-child td {
     top: 104px;
     left: 20px;
     right: 20px;
+  }
+
+  .tutorial-rail {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .tutorial-rail-actions .btn {
+    width: auto;
+  }
+
+  .walkthrough-card-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -2529,13 +2680,9 @@ tbody tr:last-child td {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .tutorial-head {
-    grid-template-columns: minmax(0, 1fr) auto;
+  .walkthrough-shell {
+    grid-template-columns: minmax(260px, 0.74fr) minmax(0, 1.26fr);
     align-items: start;
-  }
-
-  .tutorial-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .surface-header {

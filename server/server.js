@@ -29,6 +29,7 @@ app.use(express.static(publicDir));
 // Routes
 app.use('/api/auth', require('../routes/auth'));
 app.use('/api/materials', require('../routes/materials'));
+app.use('/api/stock-labels', require('../routes/stock-labels'));
 app.use('/api/issuances', require('../routes/issuances'));
 
 // SPA fallback

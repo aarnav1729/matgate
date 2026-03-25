@@ -63,6 +63,193 @@ function toISTClock(value) {
   });
 }
 
+function toISTDate(value) {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+}
+
+function todayDateInputValue() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
+}
+
+function toTatLabel(minutes) {
+  if (minutes === null || minutes === undefined || Number.isNaN(Number(minutes))) {
+    return "—";
+  }
+
+  const totalMinutes = Math.max(0, Math.round(Number(minutes)));
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+
+  const hours = Math.floor(totalMinutes / 60);
+  const remainderMinutes = totalMinutes % 60;
+  if (hours < 24) return `${hours}h ${remainderMinutes}m`;
+
+  const days = Math.floor(hours / 24);
+  const remainderHours = hours % 24;
+  return `${days}d ${remainderHours}h`;
+}
+
+function getIssuanceTat(issuance) {
+  if (!issuance) {
+    return {
+      inwardToIssueMinutes: null,
+      issueToReceiveMinutes: null,
+      inwardToReceiveMinutes: null
+    };
+  }
+
+  const inwardToIssueMinutes =
+    issuance.tatInwardToIssueMinutes ??
+    (issuance.sourceInwardPrintedAt && issuance.issuedAt
+      ? Math.round(
+          (new Date(issuance.issuedAt).getTime() -
+            new Date(issuance.sourceInwardPrintedAt).getTime()) /
+            60000
+        )
+      : null);
+
+  const issueToReceiveMinutes =
+    issuance.tatIssueToReceiveMinutes ??
+    (issuance.issuedAt && issuance.receivedAt
+      ? Math.round(
+          (new Date(issuance.receivedAt).getTime() -
+            new Date(issuance.issuedAt).getTime()) /
+            60000
+        )
+      : null);
+
+  const inwardToReceiveMinutes =
+    issuance.tatInwardToReceiveMinutes ??
+    (issuance.sourceInwardPrintedAt && issuance.receivedAt
+      ? Math.round(
+          (new Date(issuance.receivedAt).getTime() -
+            new Date(issuance.sourceInwardPrintedAt).getTime()) /
+            60000
+        )
+      : null);
+
+  return {
+    inwardToIssueMinutes,
+    issueToReceiveMinutes,
+    inwardToReceiveMinutes
+  };
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function openPrintDocument(title, cardsMarkup) {
+  const printWindow = window.open("", "_blank", "width=1024,height=760");
+  if (!printWindow) return;
+
+  printWindow.document.write(`<!DOCTYPE html>
+    <html>
+    <head>
+      <title>${escapeHtml(title)}</title>
+      <style>
+        :root{color-scheme:light only}
+        *{box-sizing:border-box}
+        body{margin:0;padding:24px;font-family:Inter,Arial,sans-serif;background:#eef4ff;color:#111827}
+        .sheet-head{margin:0 auto 20px;max-width:1120px}
+        .sheet-head h1{margin:0 0 6px;font-size:22px;letter-spacing:-.03em}
+        .sheet-head p{margin:0;color:#5b6475;font-size:13px}
+        .sheet-grid{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+        .label-card{break-inside:avoid;page-break-inside:avoid;background:#fff;border:1px solid #d8e1ec;border-radius:22px;padding:18px;box-shadow:0 18px 48px rgba(15,23,42,.08)}
+        .label-kicker{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#47668f;font-weight:700}
+        .label-id{margin:10px 0 14px;font-size:22px;line-height:1.1;letter-spacing:-.04em;font-weight:800}
+        .label-meta{display:grid;gap:8px}
+        .label-row{display:flex;justify-content:space-between;gap:14px;padding:8px 0;border-bottom:1px solid #edf2f7;font-size:12px}
+        .label-row span:first-child{color:#6b7f97;text-transform:uppercase;letter-spacing:.12em;font-size:10px;font-weight:700}
+        .label-row span:last-child{text-align:right;font-weight:700}
+        .label-qr{margin:16px 0 12px;display:grid;place-items:center}
+        .label-qr img{width:180px;padding:10px;background:#fff;border-radius:18px;box-shadow:0 14px 30px rgba(15,23,42,.08)}
+        .label-foot{font-size:11px;color:#5f6f86;line-height:1.5}
+      </style>
+    </head>
+    <body>
+      <div class="sheet-head">
+        <h1>${escapeHtml(title)}</h1>
+        <p>Printed in IST from MatGate.</p>
+      </div>
+      <div class="sheet-grid">${cardsMarkup}</div>
+    </body>
+    </html>`);
+  printWindow.document.close();
+  setTimeout(() => printWindow.print(), 400);
+}
+
+function buildStockLabelCard(label, heading = "Inward Stock Label") {
+  return `
+    <article class="label-card">
+      <div class="label-kicker">${escapeHtml(heading)}</div>
+      <div class="label-id">${escapeHtml(label.stockLabelId)}</div>
+      <div class="label-meta">
+        <div class="label-row"><span>Material</span><span>${escapeHtml(label.materialCode)}</span></div>
+        <div class="label-row"><span>Description</span><span>${escapeHtml(clip(label.materialDescription, 42))}</span></div>
+        <div class="label-row"><span>Quantity</span><span>${escapeHtml(`${label.currentQuantity} ${label.baseUoM || ""}`)}</span></div>
+        <div class="label-row"><span>Batch</span><span>${escapeHtml(label.inwardBatchId)}</span></div>
+        <div class="label-row"><span>Pallet</span><span>${escapeHtml(`${label.palletSequence} / ${label.palletCount}`)}</span></div>
+        <div class="label-row"><span>DMR</span><span>${escapeHtml(label.dmrNumber)}</span></div>
+        <div class="label-row"><span>DMR Date</span><span>${escapeHtml(toISTDate(label.dmrDate))}</span></div>
+        <div class="label-row"><span>Make</span><span>${escapeHtml(label.make)}</span></div>
+        <div class="label-row"><span>Vendor</span><span>${escapeHtml(label.vendorName)}</span></div>
+        <div class="label-row"><span>Printed At</span><span>${escapeHtml(toIST(label.inwardPrintedAt))}</span></div>
+        <div class="label-row"><span>Revision</span><span>${escapeHtml(label.revision || 1)}</span></div>
+      </div>
+      <div class="label-qr"><img src="${label.qrCodeData}" alt="QR Code" /></div>
+      <div class="label-foot">Stick this label on the inward pallet and reprint the same stock label whenever the remaining balance changes.</div>
+    </article>
+  `;
+}
+
+function buildIssueLabelCard(issuance) {
+  return `
+    <article class="label-card">
+      <div class="label-kicker">Issue To Production</div>
+      <div class="label-id">${escapeHtml(issuance.issuanceId)}</div>
+      <div class="label-meta">
+        <div class="label-row"><span>Source Label</span><span>${escapeHtml(issuance.sourceLabelId || "—")}</span></div>
+        <div class="label-row"><span>Material</span><span>${escapeHtml(issuance.materialCode)}</span></div>
+        <div class="label-row"><span>Description</span><span>${escapeHtml(clip(issuance.materialDescription, 42))}</span></div>
+        <div class="label-row"><span>Issued Qty</span><span>${escapeHtml(`${issuance.quantity} ${issuance.baseUoM || ""}`)}</span></div>
+        <div class="label-row"><span>DMR</span><span>${escapeHtml(issuance.dmrNumber)}</span></div>
+        <div class="label-row"><span>DMR Date</span><span>${escapeHtml(toISTDate(issuance.dmrDate))}</span></div>
+        <div class="label-row"><span>Make</span><span>${escapeHtml(issuance.make || "—")}</span></div>
+        <div class="label-row"><span>Vendor</span><span>${escapeHtml(issuance.vendorName || "—")}</span></div>
+        <div class="label-row"><span>Issued At</span><span>${escapeHtml(toIST(issuance.issuedAt))}</span></div>
+      </div>
+      <div class="label-qr"><img src="${issuance.qrCodeData}" alt="QR Code" /></div>
+      <div class="label-foot">Production receives against this issue QR. The source inward label stays as the stock record for any remaining balance.</div>
+    </article>
+  `;
+}
+
+function printStockLabels(labels, heading = "Stock Labels") {
+  if (!Array.isArray(labels) || labels.length === 0) return;
+  openPrintDocument(heading, labels.map((label) => buildStockLabelCard(label, heading)).join(""));
+}
+
+function printIssueLabels(issuances) {
+  if (!Array.isArray(issuances) || issuances.length === 0) return;
+  openPrintDocument("Issue Labels", issuances.map(buildIssueLabelCard).join(""));
+}
+
 function exportToXlsx(data, filename) {
   if (!Array.isArray(data) || data.length === 0) return false;
 
@@ -481,55 +668,82 @@ function getTutorialContent(page, role) {
     dashboard: {
       stores: {
         title: "Stores walkthrough",
-        copy: "Use the dashboard to decide what to issue next and what still needs follow-up.",
+        copy: "Use the dashboard to start the next stock movement fast.",
         steps: [
           {
-            title: "Start with Issue",
-            copy: "Open Issue Material when a label needs to be created for the next movement."
+            title: "Start at inward",
+            copy: "Every new arrival begins with stock labels.",
+            action: "Open Inward, pick the material, enter quantity per pallet, pallet count, DMR date, make, and vendor.",
+            check: "Confirm the pallet count matches the truck before printing.",
+            outcome: "Each pallet gets one stock QR and becomes available for issue."
           },
           {
-            title: "Track pending receipts",
-            copy: "Watch the pending count to see which issuances are still waiting on production."
+            title: "Issue from stock",
+            copy: "Issue only from active inward labels.",
+            action: "Open Issue, select the source labels, and enter full or partial quantities.",
+            check: "If you split stock, make sure the issue quantity is lower than the available balance.",
+            outcome: "Stores prints an issue QR and, when needed, a refreshed balance label."
           },
           {
-            title: "Audit from History",
-            copy: "Open History to confirm what has been issued, received, or rejected."
+            title: "Watch pending receipts",
+            copy: "Stay on top of open handoffs.",
+            action: "Use Recent or History to see which issue labels production has not accepted yet.",
+            check: "Focus on long-open issues first.",
+            outcome: "The queue stays clean and TAT stays accurate."
           }
         ]
       },
       production: {
         title: "Production walkthrough",
-        copy: "The dashboard keeps the receive queue and verification path one click away.",
+        copy: "Production works only on issue labels.",
         steps: [
           {
             title: "Open Receive",
-            copy: "Go to Receive Material when a label arrives at the production point."
+            copy: "Start here when material reaches production.",
+            action: "Open the Receive page as soon as an issue QR arrives at the line.",
+            check: "Use the issue label, not the inward stock label.",
+            outcome: "Production always acts on the correct movement record."
           },
           {
-            title: "Use camera first",
-            copy: "Scan the label directly when possible, then fall back to manual lookup only if needed."
+            title: "Scan first",
+            copy: "Use the fastest lookup path.",
+            action: "Open the camera for live scanning, or paste the QR text or issue ID if a scanner feeds another system.",
+            check: "Make sure the resolved issue ID matches the label in hand.",
+            outcome: "The correct issue opens with full trace details."
           },
           {
-            title: "Confirm through History",
-            copy: "Use History when you need to review an earlier receipt or rejection."
+            title: "Confirm receipt",
+            copy: "Close the movement cleanly.",
+            action: "Review quantity, source label, vendor, and timestamps, then accept or reject.",
+            check: "Reject only with remarks.",
+            outcome: "Production acceptance updates the receipt timestamp and analytics."
           }
         ]
       },
       admin: {
         title: "Admin walkthrough",
-        copy: "Admin mode can move between stores, production, and audit tasks from one place.",
+        copy: "Admin can monitor the full flow from one view.",
         steps: [
           {
-            title: "Choose the lane",
-            copy: "Jump into Issue or Receive depending on where the operational bottleneck is."
+            title: "Read TAT first",
+            copy: "Start with delay signals.",
+            action: "Open the TAT cards and slowest movements to spot where the flow is slowing down.",
+            check: "Separate stores delay from production delay.",
+            outcome: "You know which team or step needs attention first."
           },
           {
-            title: "Maintain the master",
-            copy: "Use Materials when bad master data is slowing down issue creation."
+            title: "Jump to the lane",
+            copy: "Move directly to the blocked area.",
+            action: "Use Inward, Issue, or Receive based on where the queue is building.",
+            check: "Check pending issue age before changing priorities.",
+            outcome: "Admins can intervene without losing traceability."
           },
           {
             title: "Audit exceptions",
-            copy: "Review History to resolve rejects, mismatches, and open receipts."
+            copy: "Use history only for detail work.",
+            action: "Open History to inspect source labels, vendor details, remarks, and timestamps for any movement.",
+            check: "Export only the filtered set you need.",
+            outcome: "Audit and RCA stay focused and fast."
           }
         ]
       }
@@ -537,19 +751,57 @@ function getTutorialContent(page, role) {
     masters: {
       default: {
         title: "Material master walkthrough",
-        copy: "Keep master data accurate so issuing stays fast and predictable.",
+        copy: "Keep material data clean so operators can move quickly.",
         steps: [
           {
-            title: "Filter to a narrow list",
-            copy: "Use search and filters first so edits happen in a controlled subset."
+            title: "Find the material",
+            copy: "Narrow the list before you edit.",
+            action: "Use search or filters to isolate the exact material or group you need.",
+            check: "Avoid broad edits from the full list.",
+            outcome: "You stay focused on the right records."
           },
           {
             title: "Edit or add",
-            copy: "Use Edit to correct an existing row or Add Material to introduce a new code."
+            copy: "Update only what operations needs.",
+            action: "Use Edit for existing materials or Add Material for a new code.",
+            check: "Make sure type and UoM are correct before saving.",
+            outcome: "Stores gets clean data in the operational screens."
           },
           {
-            title: "Export when needed",
-            copy: "Export filtered or selected rows when someone needs a controlled extract."
+            title: "Export with intent",
+            copy: "Export only the working set.",
+            action: "Use selected or filtered export when someone needs a controlled list.",
+            check: "Apply filters before exporting large sets.",
+            outcome: "Exports stay small and usable."
+          }
+        ]
+      }
+    },
+    inward: {
+      default: {
+        title: "Inward workflow",
+        copy: "Create stock labels as soon as the material arrives.",
+        steps: [
+          {
+            title: "Find the material",
+            copy: "Start with the right material record.",
+            action: "Search by code or description and select the exact material.",
+            check: "Confirm the UoM and description before moving on.",
+            outcome: "The printed label uses the correct material snapshot."
+          },
+          {
+            title: "Set the batch",
+            copy: "Describe the arrival once.",
+            action: "Enter quantity per pallet, number of pallets, DMR, DMR date, make, and vendor.",
+            check: "Vendor should come from the list unless this is a new supplier.",
+            outcome: "The whole truck or lot is ready to print in one run."
+          },
+          {
+            title: "Print and stick",
+            copy: "Create one label per pallet.",
+            action: "Print the full batch and stick each label on the matching pallet immediately.",
+            check: "Do not issue stock before the inward labels are on the pallets.",
+            outcome: "Those labels become the stock source for later issue."
           }
         ]
       }
@@ -557,19 +809,28 @@ function getTutorialContent(page, role) {
     issue: {
       default: {
         title: "Issue workflow",
-        copy: "This flow is intentionally short: pick the material, enter the movement details, and print.",
+        copy: "Issue from active stock labels, not from free-text entry.",
         steps: [
           {
-            title: "Find the material",
-            copy: "Search by code or description and confirm the linked material details before continuing."
+            title: "Choose source labels",
+            copy: "Pick the pallets that should move.",
+            action: "Search the active stock list and select the labels you want to issue.",
+            check: "Pick only labels with live balance.",
+            outcome: "The issue stays tied to the original inward pallet."
           },
           {
-            title: "Enter quantity and DMR",
-            copy: "Only quantity and DMR are required beyond the material itself."
+            title: "Set issue quantity",
+            copy: "Full and partial issues both work.",
+            action: "Leave the full quantity for a full pallet issue, or type a lower value for a split issue.",
+            check: "Never exceed the available balance on the source label.",
+            outcome: "Stores can issue exact demand without losing stock traceability."
           },
           {
-            title: "Generate and print",
-            copy: "Create the issuance, then print the QR label for production receipt."
+            title: "Print issue and balance labels",
+            copy: "Create the movement record and refresh stock.",
+            action: "Print the issue QR for production and reprint the inward label if a balance remains.",
+            check: "Replace the old pallet label with the new balance print.",
+            outcome: "Production gets a clean issue QR and stores keeps an accurate stock label."
           }
         ]
       }
@@ -577,19 +838,28 @@ function getTutorialContent(page, role) {
     scan: {
       default: {
         title: "Receive workflow",
-        copy: "Production can scan, verify the trace, and record the receipt decision in one pass.",
+        copy: "Receive against the issue QR and confirm the handoff.",
         steps: [
           {
-            title: "Scan or paste",
-            copy: "Open the camera for live scanning or paste the scan text from another device."
+            title: "Resolve the issue",
+            copy: "Open the right record first.",
+            action: "Use the camera for a live scan or paste the issue ID or QR text for manual lookup.",
+            check: "Make sure the resolved issue matches the label in front of you.",
+            outcome: "Production is looking at the correct movement."
           },
           {
             title: "Verify the trace",
-            copy: "Confirm the scanned key matches the issuance and review the resolved movement details."
+            copy: "Review before accepting.",
+            action: "Check material, quantity, source stock label, vendor, and timestamps on the resolved record.",
+            check: "Stop if the scan key and resolved issue do not line up.",
+            outcome: "Receipt decisions are based on the full trace."
           },
           {
             title: "Accept or reject",
-            copy: "Accept when the movement is valid, or reject with remarks if the receipt should not proceed."
+            copy: "Close the movement properly.",
+            action: "Accept to mark receipt, or reject with remarks if the movement is invalid.",
+            check: "Remarks are required for rejection.",
+            outcome: "The production timestamp feeds history and TAT."
           }
         ]
       }
@@ -597,19 +867,28 @@ function getTutorialContent(page, role) {
     history: {
       default: {
         title: "History walkthrough",
-        copy: "History is the audit workspace for search, review, and export.",
+        copy: "History is for audit, trace, and export.",
         steps: [
           {
             title: "Filter first",
-            copy: "Search by issuance, material, or DMR and narrow the list with status or date filters."
+            copy: "Start with a narrow result set.",
+            action: "Search by issue ID, source label, material, vendor, or DMR, then add status or date filters.",
+            check: "Use the smallest filter set that answers the question.",
+            outcome: "The audit view stays fast and readable."
           },
           {
-            title: "Inspect the record",
-            copy: "Open a row to view the QR label, status changes, and receipt remarks."
+            title: "Inspect one movement",
+            copy: "Open only the rows that matter.",
+            action: "View a row to see the issue QR, source label, timestamps, remarks, and TAT.",
+            check: "Focus on source label and timestamps for disputes.",
+            outcome: "You can explain exactly what happened and when."
           },
           {
-            title: "Page and export",
-            copy: "Adjust the row count, move through pages, or export the selected result set."
+            title: "Export the answer",
+            copy: "Export only what you need.",
+            action: "Adjust rows, move through pages, select records, and export the final audit set.",
+            check: "Export the filtered set instead of the full history when possible.",
+            outcome: "Teams get a concise report with IST timestamps."
           }
         ]
       }
@@ -621,47 +900,189 @@ function getTutorialContent(page, role) {
   return pageContent[role] || pageContent.default || null;
 }
 
+function WalkthroughModal({ tutorial, page, onClose, onDisable }) {
+  const [stepIndex, setStepIndex] = useState(0);
+
+  useEffect(() => {
+    setStepIndex(0);
+  }, [page, tutorial?.title]);
+
+  if (!tutorial) return null;
+
+  const step = tutorial.steps[stepIndex];
+  const isFirst = stepIndex === 0;
+  const isLast = stepIndex === tutorial.steps.length - 1;
+
+  return (
+    <Modal title={tutorial.title} onClose={onClose} large>
+      <div className="modal-body stack walkthrough-modal-body">
+        <section className="walkthrough-summary">
+          <div className="workspace-eyebrow">
+            {Icons.spark}
+            Guided Walkthrough
+          </div>
+          <h4>{tutorial.copy}</h4>
+          <div className="walkthrough-progress">
+            {tutorial.steps.map((item, index) => (
+              <span
+                key={item.title}
+                className={classNames(index === stepIndex && "active")}
+              >
+                {String(index + 1).padStart(2, "0")} {item.title}
+              </span>
+            ))}
+          </div>
+        </section>
+
+        <div className="walkthrough-shell">
+          <aside className="walkthrough-sidebar">
+            {tutorial.steps.map((item, index) => (
+              <button
+                key={item.title}
+                type="button"
+                className={classNames("walkthrough-nav-item", index === stepIndex && "active")}
+                onClick={() => setStepIndex(index)}
+              >
+                <span className="walkthrough-nav-index mono">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <div>
+                  <strong>{item.title}</strong>
+                  <p>{item.copy}</p>
+                </div>
+              </button>
+            ))}
+          </aside>
+
+          <section className="walkthrough-stage">
+            <div className="walkthrough-stage-head">
+              <span className="walkthrough-stage-count">
+                Step {stepIndex + 1} of {tutorial.steps.length}
+              </span>
+              <h3>{step.title}</h3>
+              <p>{step.copy}</p>
+            </div>
+
+            <div className="walkthrough-card-grid">
+              <article className="walkthrough-detail-card">
+                <span>Do</span>
+                <strong>{step.action}</strong>
+              </article>
+              <article className="walkthrough-detail-card">
+                <span>Check</span>
+                <strong>{step.check}</strong>
+              </article>
+              <article className="walkthrough-detail-card">
+                <span>Result</span>
+                <strong>{step.outcome}</strong>
+              </article>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div className="modal-footer">
+        <button type="button" className="btn btn-secondary" onClick={onDisable}>
+          {Icons.close}
+          Hide Guide
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => setStepIndex((current) => Math.max(0, current - 1))}
+          disabled={isFirst}
+        >
+          Back
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => {
+            if (isLast) onClose();
+            else setStepIndex((current) => Math.min(tutorial.steps.length - 1, current + 1));
+          }}
+        >
+          {isLast ? "Done" : "Next"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 function TutorialPanel({ page }) {
   const { user, tutorialMode, setTutorialMode } = useContext(AppContext);
   const tutorial = getTutorialContent(page, user.role);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    setOpen(false);
+  }, [page, tutorial?.title]);
+
+  useEffect(() => {
+    if (!tutorialMode || !tutorial) {
+      setOpen(false);
+      return;
+    }
+
+    let shouldAutoOpen = true;
+
+    try {
+      const key = `mg_walkthrough_seen_${user.role}_${page}`;
+      shouldAutoOpen = sessionStorage.getItem(key) !== "1";
+      if (shouldAutoOpen) sessionStorage.setItem(key, "1");
+    } catch (e) {}
+
+    if (shouldAutoOpen) setOpen(true);
+  }, [page, tutorial, tutorialMode, user.role]);
 
   if (!tutorialMode || !tutorial) return null;
 
   return (
-    <Reveal delay={50}>
-      <section className="tutorial-panel">
-        <div className="tutorial-head">
-          <div>
+    <>
+      <Reveal delay={50}>
+        <section className="tutorial-rail">
+          <div className="tutorial-rail-copy">
             <div className="workspace-eyebrow">
               {Icons.spark}
-              Tutorial Mode
+              Guided Walkthrough
             </div>
-            <h3>{tutorial.title}</h3>
-            <p>{tutorial.copy}</p>
+            <strong>{tutorial.title}</strong>
+            <span>{tutorial.steps.length} steps for this screen.</span>
           </div>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => setTutorialMode(false)}
-          >
-            {Icons.close}
-            Hide Tutorial
-          </button>
-        </div>
 
-        <div className="tutorial-grid">
-          {tutorial.steps.map((step, index) => (
-            <div key={step.title} className="tutorial-step">
-              <span className="tutorial-index mono">{String(index + 1).padStart(2, "0")}</span>
-              <div>
-                <strong>{step.title}</strong>
-                <p>{step.copy}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-    </Reveal>
+          <div className="tutorial-rail-actions">
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => setOpen(true)}
+            >
+              {Icons.spark}
+              Open Walkthrough
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setTutorialMode(false)}
+            >
+              {Icons.close}
+              Hide Guide
+            </button>
+          </div>
+        </section>
+      </Reveal>
+
+      {open && (
+        <WalkthroughModal
+          tutorial={tutorial}
+          page={page}
+          onClose={() => setOpen(false)}
+          onDisable={() => {
+            setTutorialMode(false);
+            setOpen(false);
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -678,19 +1099,19 @@ function LoginScreen({ onLogin }) {
       role: "Stores",
       username: "stores",
       password: "stores123",
-      copy: "Issue labels, review pending receipts, and maintain master data."
+      copy: "Inward, issue, queue"
     },
     {
       role: "Production",
       username: "production",
       password: "prod123",
-      copy: "Scan incoming labels, verify trace details, and close receipts."
+      copy: "Scan, verify, accept"
     },
     {
       role: "Admin",
       username: "admin",
       password: "admin123",
-      copy: "Monitor operations, resolve exceptions, and audit the full history."
+      copy: "Monitor, audit, TAT"
     }
   ];
 
@@ -721,8 +1142,8 @@ function LoginScreen({ onLogin }) {
         <div className="login-card">
           <section className="login-panel login-form-panel">
             <div className="login-form-head">
-              <h1>MatGate Management System</h1>
-              <p>Sign in to your account</p>
+              <h1>MatGate</h1>
+              <p>Operations sign in</p>
             </div>
 
             <form className="stack login-form" onSubmit={handleSubmit}>
@@ -765,8 +1186,6 @@ function LoginScreen({ onLogin }) {
                 {Icons.arrowRight}
                 {loading ? "Signing in..." : "Sign In"}
               </button>
-
-              <div className="field-note">Session is role-based and expires after 12 hours.</div>
             </form>
           </section>
 
@@ -774,7 +1193,7 @@ function LoginScreen({ onLogin }) {
             <div className="login-demo-head">
               <div className="login-demo-title">
                 {Icons.users}
-                <h2>Demo User Credentials</h2>
+                <h2>Demo access</h2>
               </div>
               <button
                 type="button"
@@ -787,7 +1206,7 @@ function LoginScreen({ onLogin }) {
 
             {!showCredentials ? (
               <div className="login-demo-empty">
-                Click "Show Credentials" to view demo user accounts
+                Open demo access to autofill a role.
               </div>
             ) : (
               <div className="credential-grid">
@@ -979,6 +1398,7 @@ function MaterialAutocomplete({ value, onChange, onSelect }) {
 function Dashboard() {
   const { user, navigate } = useContext(AppContext);
   const [stats, setStats] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
   const [recent, setRecent] = useState([]);
   const [recentPage, setRecentPage] = useState(1);
   const [recentPages, setRecentPages] = useState(1);
@@ -994,20 +1414,28 @@ function Dashboard() {
 
     async function load() {
       try {
-        const [statsData, recentData] = await Promise.all([
+        const requests = [
           api("/api/issuances/stats"),
           api(`/api/issuances?page=${recentPage}&limit=${recentLimit}`)
-        ]);
+        ];
+
+        if (user.role === "admin") {
+          requests.push(api("/api/issuances/analytics"));
+        }
+
+        const [statsData, recentData, analyticsData] = await Promise.all(requests);
 
         if (!cancelled) {
           setStats(statsData);
           setRecent(recentData.issuances || []);
           setRecentPages(recentData.pages || 1);
           setRecentTotal(recentData.total || 0);
+          setAnalytics(analyticsData || null);
         }
       } catch (e) {
         if (!cancelled) {
           setStats(null);
+          setAnalytics(null);
           setRecent([]);
           setRecentPages(1);
           setRecentTotal(0);
@@ -1019,12 +1447,18 @@ function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [recentPage, recentLimit]);
+  }, [recentPage, recentLimit, user.role]);
 
   const quickActions = [
     {
+      key: "inward",
+      label: "Inward Labels",
+      icon: Icons.layers,
+      roles: ["stores", "admin"]
+    },
+    {
       key: "issue",
-      label: "Issue Material",
+      label: "Issue Stock",
       icon: Icons.send,
       roles: ["stores", "admin"]
     },
@@ -1042,51 +1476,53 @@ function Dashboard() {
     }
   ].filter((action) => action.roles.includes(user.role));
 
-  const heroStats = [
-    { label: "Pending Receipt", value: stats?.issued ?? "—", tone: "warning" },
-    { label: "Received", value: stats?.received ?? "—", tone: "success" },
-    { label: "Rejected", value: stats?.rejected ?? "—", tone: "danger" },
-    { label: "Opened Today", value: stats?.todayCount ?? "—", tone: "primary" }
-  ];
-
-  const metricCards = [
-    {
-      label: "Lane",
-      value: roleLabel(user.role),
-      copy: "Current operating lane.",
-      tone: "primary"
-    },
-    {
-      label: "Total Movements",
-      value: stats?.total ?? "—",
-      copy: "All tracked issuances.",
-      tone: "success"
-    },
-    {
-      label: "Awaiting Receipt",
-      value: stats?.issued ?? "—",
-      copy: "Still pending production action.",
-      tone: "warning"
-    },
-    {
-      label: "Rejected",
-      value: stats?.rejected ?? "—",
-      copy: "Need follow-up or reissue.",
-      tone: "danger"
-    }
-  ];
+  const heroStats =
+    user.role === "production"
+      ? [
+          { label: "Pending Receipt", value: stats?.issued ?? "—", tone: "warning" },
+          { label: "Accepted Today", value: stats?.acceptedTodayCount ?? "—", tone: "success" },
+          { label: "Issued Today", value: stats?.issuedTodayCount ?? "—", tone: "primary" },
+          { label: "Rejected", value: stats?.rejected ?? "—", tone: "danger" }
+        ]
+      : [
+          { label: "Active Labels", value: stats?.activeLabels ?? "—", tone: "primary" },
+          { label: "Available Qty", value: stats?.availableQuantity ?? "—", tone: "success" },
+          { label: "Pending Receipt", value: stats?.issued ?? "—", tone: "warning" },
+          { label: "Inward Today", value: stats?.inwardTodayCount ?? "—", tone: "danger" }
+        ];
 
   const actionCards = quickActions.map((action) => ({
     ...action,
     copy:
       {
-        issue: "Create an issuance and print a label.",
-        scan: "Resolve a scan and confirm receipt.",
-        history: "Search, inspect, and export records."
-      }[action.key] || "Open the next task."
+        inward: "Print pallet labels",
+        issue: "Issue from stock",
+        scan: "Receive issue QRs",
+        history: "Search movement records"
+      }[action.key] || ""
   }));
 
   const recentWindow = pageWindow(recentPage, recentLimit, recentTotal);
+  const analyticsCards = analytics?.summary
+    ? [
+        {
+          label: "Avg Inward to Issue",
+          value: toTatLabel(analytics.summary.avgInwardToIssueMinutes)
+        },
+        {
+          label: "Avg Issue to Accept",
+          value: toTatLabel(analytics.summary.avgIssueToReceiveMinutes)
+        },
+        {
+          label: "Avg End to End",
+          value: toTatLabel(analytics.summary.avgInwardToReceiveMinutes)
+        },
+        {
+          label: "Pending Avg Age",
+          value: toTatLabel(analytics.summary.pendingReceiptAvgAgeMinutes)
+        }
+      ]
+    : [];
 
   return (
     <div className="page-stack">
@@ -1098,8 +1534,8 @@ function Dashboard() {
               Overview
             </>
           }
-          title="Dashboard"
-          description="Monitor pending receipts, open the next transaction, and review the latest movements."
+          title="Operations dashboard"
+          description="Start the next task."
           actions={
             <>
               {quickActions.map((action) => (
@@ -1108,7 +1544,7 @@ function Dashboard() {
                   type="button"
                   className={classNames(
                     "btn",
-                    action.key === "issue" ? "btn-primary" : "btn-secondary"
+                    action.key === "inward" ? "btn-primary" : "btn-secondary"
                   )}
                   onClick={() => navigate(action.key)}
                 >
@@ -1120,42 +1556,185 @@ function Dashboard() {
           }
           stats={heroStats}
           aside={
-            <>
-              <div className="workflow-step compact">
-                <span className="step-label">Lane</span>
-                <strong>{roleLabel(user.role)}</strong>
-                <p>{user.name}</p>
-              </div>
-              <div className="workflow-step compact">
-                <span className="step-label">Lookup Standard</span>
-                <strong>Issuance ID</strong>
-                <p>New and legacy labels resolve to the same receipt key.</p>
-              </div>
-            </>
+            <div className="workflow-step compact">
+              <span className="step-label">Lane</span>
+              <strong>{roleLabel(user.role)}</strong>
+              <p>{user.name}</p>
+            </div>
           }
         />
       </Reveal>
 
       <TutorialPanel page="dashboard" />
 
-      <Reveal delay={90}>
-        <div className="metric-grid">
-          {metricCards.map((card) => (
-            <div key={card.label} className={classNames("metric-card", card.tone)}>
-              <div className="metric-kicker">{card.label}</div>
-              <div className="metric-value">{card.value}</div>
-              <div className="metric-copy">{card.copy}</div>
-            </div>
-          ))}
+      {user.role === "admin" && analytics && (
+        <div className="split-grid">
+          <Reveal delay={125}>
+            <section className="surface-card">
+              <div className="surface-header">
+                <div className="surface-title">
+                  <h3>TAT Summary</h3>
+                </div>
+              </div>
+              <div className="surface-body stack">
+                <SummaryGrid
+                  items={analyticsCards.map((item) => ({
+                    label: item.label,
+                    value: item.value
+                  }))}
+                />
+              </div>
+            </section>
+          </Reveal>
+
+          <Reveal delay={165}>
+            <section className="surface-card alt">
+              <div className="surface-header">
+                <div className="surface-title">
+                  <h3>Open Bottlenecks</h3>
+                </div>
+              </div>
+              <div className="surface-body stack">
+                {analytics.oldestPending?.length ? (
+                  <div className="record-list">
+                    {analytics.oldestPending.map((item) => (
+                      <article key={item._id} className="record-card compact">
+                        <div className="record-card-head">
+                          <div>
+                            <div className="record-card-kicker">Pending Issue</div>
+                            <div className="record-card-title mono">{item.issuanceId}</div>
+                          </div>
+                          <StatusBadge status={item.status} />
+                        </div>
+                        <div className="record-card-copy">
+                          <strong>{item.materialCode}</strong>
+                          <span>{item.sourceLabelId || "No source label"}</span>
+                        </div>
+                        <div className="record-card-grid">
+                          <div className="record-field">
+                            <span>Pending Age</span>
+                            <strong>{toTatLabel(item.pendingReceiptAgeMinutes)}</strong>
+                          </div>
+                          <div className="record-field">
+                            <span>Vendor</span>
+                            <strong>{item.vendorName || "—"}</strong>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState
+                    title="No pending bottlenecks"
+                    copy="Nothing is waiting."
+                  />
+                )}
+              </div>
+            </section>
+          </Reveal>
         </div>
-      </Reveal>
+      )}
+
+      {user.role === "admin" && analytics && (
+        <Reveal delay={205}>
+          <section className="surface-card">
+            <div className="surface-header">
+              <div className="surface-title">
+                <h3>Slowest Accepted Movements</h3>
+              </div>
+            </div>
+            <div className="table-wrap desktop-only">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Issue ID</th>
+                    <th>Source Label</th>
+                    <th>Material</th>
+                    <th>Vendor</th>
+                    <th>Inward to Issue</th>
+                    <th>Issue to Accept</th>
+                    <th>Total TAT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {analytics.slowestAccepted.length === 0 ? (
+                    <tr>
+                      <td colSpan="7">
+                        <EmptyState
+                          title="No accepted movements yet"
+                          copy="Accepted movements will appear here."
+                        />
+                      </td>
+                    </tr>
+                  ) : (
+                    analytics.slowestAccepted.map((item) => {
+                      const tat = getIssuanceTat(item);
+                      return (
+                        <tr key={item._id}>
+                          <td className="mono">{item.issuanceId}</td>
+                          <td className="mono">{item.sourceLabelId || "—"}</td>
+                          <td>{item.materialCode}</td>
+                          <td>{item.vendorName || "—"}</td>
+                          <td>{toTatLabel(tat.inwardToIssueMinutes)}</td>
+                          <td>{toTatLabel(tat.issueToReceiveMinutes)}</td>
+                          <td>{toTatLabel(tat.inwardToReceiveMinutes)}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="surface-body mobile-only">
+              {analytics.slowestAccepted.length === 0 ? (
+                <EmptyState
+                  title="No accepted movements yet"
+                  copy="Accepted movements will appear here."
+                />
+              ) : (
+                <div className="record-list">
+                  {analytics.slowestAccepted.map((item) => {
+                    const tat = getIssuanceTat(item);
+                    return (
+                      <article key={item._id} className="record-card compact">
+                        <div className="record-card-head">
+                          <div>
+                            <div className="record-card-kicker">Accepted Movement</div>
+                            <div className="record-card-title mono">{item.issuanceId}</div>
+                          </div>
+                          <strong>{toTatLabel(tat.inwardToReceiveMinutes)}</strong>
+                        </div>
+                        <div className="record-card-copy">
+                          <strong>{item.materialCode}</strong>
+                          <span>{item.sourceLabelId || "—"}</span>
+                        </div>
+                        <div className="record-card-grid">
+                          <div className="record-field">
+                            <span>Inward to Issue</span>
+                            <strong>{toTatLabel(tat.inwardToIssueMinutes)}</strong>
+                          </div>
+                          <div className="record-field">
+                            <span>Issue to Accept</span>
+                            <strong>{toTatLabel(tat.issueToReceiveMinutes)}</strong>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </section>
+        </Reveal>
+      )}
 
       <div className="split-grid">
         <Reveal delay={140}>
           <section className="surface-card alt">
             <div className="surface-header">
               <div className="surface-title">
-                <h3>Primary actions</h3>
+                <h3>Start</h3>
               </div>
             </div>
             <div className="surface-body stack">
@@ -1164,12 +1743,12 @@ function Dashboard() {
                   <div key={action.key} className="workflow-card">
                     <div className="workflow-icon">{action.icon}</div>
                     <h4 className="workflow-title">{action.label}</h4>
-                    <p className="workflow-copy">{action.copy}</p>
+                    {action.copy ? <p className="workflow-copy">{action.copy}</p> : null}
                     <button
                       type="button"
                       className={classNames(
                         "btn",
-                        action.key === "issue" ? "btn-primary" : "btn-secondary",
+                        action.key === "inward" ? "btn-primary" : "btn-secondary",
                         "btn-sm"
                       )}
                       onClick={() => navigate(action.key)}
@@ -1187,7 +1766,7 @@ function Dashboard() {
           <section className="surface-card">
             <div className="surface-header">
               <div className="surface-title">
-                <h3>Recent movements</h3>
+                <h3>Recent</h3>
               </div>
               <div className="surface-tools">
                 <PageSizeControl
@@ -1210,10 +1789,10 @@ function Dashboard() {
               <table>
                 <thead>
                   <tr>
-                    <th>Issuance ID</th>
+                    <th>Issue ID</th>
+                    <th>Source Label</th>
                     <th>Material</th>
                     <th>Quantity</th>
-                    <th>DMR</th>
                     <th>Status</th>
                     <th>Issued At</th>
                   </tr>
@@ -1223,8 +1802,8 @@ function Dashboard() {
                     <tr>
                       <td colSpan="6">
                         <EmptyState
-                          title="No issuances yet"
-                          copy="Create the first issuance to start the queue."
+                          title="No movements yet"
+                          copy="Issue stock to start activity."
                         />
                       </td>
                     </tr>
@@ -1234,6 +1813,7 @@ function Dashboard() {
                         <td className="mono" style={{ color: "var(--primary)", fontWeight: 700 }}>
                           {item.issuanceId}
                         </td>
+                        <td className="mono">{item.sourceLabelId || "—"}</td>
                         <td>
                           <div style={{ fontWeight: 700, color: "var(--ink)" }}>
                             {item.materialCode}
@@ -1243,7 +1823,6 @@ function Dashboard() {
                         <td className="mono">
                           {item.quantity} {item.baseUoM}
                         </td>
-                        <td className="mono">{item.dmrNumber}</td>
                         <td>
                           <StatusBadge status={item.status} />
                         </td>
@@ -1258,8 +1837,8 @@ function Dashboard() {
             <div className="surface-body mobile-only">
               {recent.length === 0 ? (
                 <EmptyState
-                  title="No issuances yet"
-                  copy="Create the first issuance to start the queue."
+                  title="No movements yet"
+                  copy="Issue stock to start activity."
                 />
               ) : (
                 <div className="record-list">
@@ -1267,25 +1846,25 @@ function Dashboard() {
                     <article key={item._id} className="record-card">
                       <div className="record-card-head">
                         <div>
-                          <div className="record-card-kicker">Issuance</div>
+                          <div className="record-card-kicker">Issue</div>
                           <div className="record-card-title mono">{item.issuanceId}</div>
                         </div>
                         <StatusBadge status={item.status} />
                       </div>
                       <div className="record-card-copy">
                         <strong>{item.materialCode}</strong>
-                        <span>{clip(item.materialDescription, 64)}</span>
+                        <span>{item.sourceLabelId || clip(item.materialDescription, 64)}</span>
                       </div>
                       <div className="record-card-grid">
+                        <div className="record-field">
+                          <span>Source Label</span>
+                          <strong className="mono">{item.sourceLabelId || "—"}</strong>
+                        </div>
                         <div className="record-field">
                           <span>Quantity</span>
                           <strong className="mono">
                             {item.quantity} {item.baseUoM}
                           </strong>
-                        </div>
-                        <div className="record-field">
-                          <span>DMR</span>
-                          <strong className="mono">{item.dmrNumber}</strong>
                         </div>
                         <div className="record-field">
                           <span>Issued At</span>
@@ -1544,7 +2123,7 @@ function MaterialMaster() {
             </>
           }
           title="Material master"
-          description="Maintain clean material data for issue, receipt, and export workflows."
+          description="Maintain material data."
           actions={
             <>
               <button
@@ -2014,21 +2593,45 @@ function MaterialFormModal({ material, filterOpts, onClose, onSave }) {
   );
 }
 
-function IssueMaterial() {
+function InwardStock() {
   const { toast, user } = useContext(AppContext);
   const emptyForm = {
     materialCode: "",
     materialDescription: "",
     materialType: "",
     baseUoM: "",
-    quantity: "",
-    dmrNumber: ""
+    quantityPerLabel: "",
+    labelCount: "",
+    dmrNumber: "",
+    dmrDate: todayDateInputValue(),
+    make: "",
+    vendorName: "",
+    customVendorName: ""
   };
-  const [form, setForm] = useState({
-    ...emptyForm
-  });
+  const [form, setForm] = useState({ ...emptyForm });
+  const [vendorOptions, setVendorOptions] = useState([]);
+  const [customVendorValue, setCustomVendorValue] = useState("__custom_vendor__");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadFilters() {
+      try {
+        const data = await api("/api/stock-labels/filters");
+        if (!cancelled) {
+          setVendorOptions(data.vendorNames || []);
+          setCustomVendorValue(data.customVendorValue || "__custom_vendor__");
+        }
+      } catch (e) {}
+    }
+
+    loadFilters();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleMaterialCodeChange = (value) => {
     setForm((current) => ({
@@ -2051,26 +2654,54 @@ function IssueMaterial() {
   };
 
   const resetForm = () => {
-    setForm({ ...emptyForm });
+    setForm({ ...emptyForm, dmrDate: todayDateInputValue() });
   };
 
-  const handleIssue = async () => {
-    if (!form.materialCode || !form.quantity || !form.dmrNumber) {
-      toast("Material code, quantity, and DMR number are required.", "error");
+  const resolvedVendorName =
+    form.vendorName === customVendorValue ? form.customVendorName : form.vendorName;
+  const totalQuantity =
+    (Number(form.quantityPerLabel) || 0) * (Number(form.labelCount) || 0);
+
+  const previewItems = [
+    { label: "Operator", value: user.name },
+    { label: "Material", value: form.materialCode || "Select material" },
+    {
+      label: "Qty / Pallet",
+      value: form.quantityPerLabel ? `${form.quantityPerLabel} ${form.baseUoM || ""}` : "Enter quantity"
+    },
+    { label: "Pallets", value: form.labelCount || "Enter pallet count" },
+    { label: "Vendor", value: resolvedVendorName || "Select vendor" },
+    { label: "Total Qty", value: totalQuantity ? `${totalQuantity} ${form.baseUoM || ""}` : "Pending" }
+  ];
+
+  const handleCreateBatch = async () => {
+    if (
+      !form.materialCode ||
+      !form.quantityPerLabel ||
+      !form.labelCount ||
+      !form.dmrNumber ||
+      !form.dmrDate ||
+      !form.make ||
+      !resolvedVendorName
+    ) {
+      toast("Material, quantity per pallet, pallet count, DMR, DMR date, make, and vendor are required.", "error");
       return;
     }
 
     setLoading(true);
     try {
-      const data = await api("/api/issuances", {
+      const data = await api("/api/stock-labels/inward", {
         method: "POST",
         body: JSON.stringify({
           ...form,
-          quantity: Number(form.quantity)
+          vendorName: form.vendorName,
+          customVendorName: form.customVendorName,
+          quantityPerLabel: Number(form.quantityPerLabel),
+          labelCount: Number(form.labelCount)
         })
       });
       setResult(data);
-      toast("Material issued and QR label generated.", "success");
+      toast(`Created ${data.totalLabels} inward stock labels.`, "success");
       resetForm();
     } catch (e) {
       toast(e.message, "error");
@@ -2078,78 +2709,8 @@ function IssueMaterial() {
     setLoading(false);
   };
 
-  const handlePrint = () => {
-    if (!result) return;
-
-    const lookupText = getQrLookupValue(result);
-    const printWindow = window.open("", "_blank", "width=560,height=760");
-    printWindow.document.write(`<!DOCTYPE html>
-      <html>
-      <head>
-        <title>MatGate Label ${result.issuanceId}</title>
-        <style>
-          body{margin:0;padding:28px;font-family:Arial,sans-serif;background:#f7f9fc;color:#0f172a}
-          .card{max-width:460px;margin:0 auto;background:#fff;border:1px solid #d8e1ec;border-radius:24px;padding:24px;box-shadow:0 20px 60px rgba(15,23,42,.08)}
-          .eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#47668f;font-weight:700}
-          h1{margin:12px 0 18px;font-size:24px;line-height:1;letter-spacing:-.04em}
-          .row{display:flex;justify-content:space-between;gap:18px;padding:10px 0;border-bottom:1px solid #edf2f7;font-size:13px}
-          .row span:first-child{color:#6b7f97;text-transform:uppercase;letter-spacing:.12em;font-size:10px;font-weight:700}
-          .row span:last-child{text-align:right;font-weight:700}
-          .qr{margin:22px 0;display:grid;place-items:center}
-          .qr img{width:220px;padding:12px;background:#fff;border-radius:22px;box-shadow:0 16px 40px rgba(15,23,42,.08)}
-          .footer{margin-top:18px;font-size:12px;color:#47668f;line-height:1.6}
-        </style>
-      </head>
-      <body>
-        <div class="card">
-          <div class="eyebrow">Material Issue Label</div>
-          <h1>${result.issuanceId}</h1>
-          <div class="row"><span>Material</span><span>${result.materialCode}</span></div>
-          <div class="row"><span>Description</span><span>${clip(result.materialDescription, 42)}</span></div>
-          <div class="row"><span>Quantity</span><span>${result.quantity} ${result.baseUoM}</span></div>
-          <div class="row"><span>DMR</span><span>${result.dmrNumber}</span></div>
-          <div class="row"><span>Issued By</span><span>${result.issuedByName}</span></div>
-          <div class="row"><span>Issued At</span><span>${toIST(result.issuedAt)}</span></div>
-          <div class="row"><span>QR Lookup Text</span><span>${lookupText}</span></div>
-          <div class="qr"><img src="${result.qrCodeData}" alt="QR Code" /></div>
-          <div class="footer">Scan to receive by issuance ID.</div>
-        </div>
-      </body>
-      </html>`);
-    printWindow.document.close();
-    setTimeout(() => printWindow.print(), 400);
-  };
-
-  const previewItems = [
-    { label: "Operator", value: user.name },
-    { label: "Role", value: roleLabel(user.role) },
-    { label: "Material", value: form.materialCode || "Select material" },
-    { label: "Description", value: form.materialDescription || "Auto-filled on selection." },
-    { label: "Quantity", value: form.quantity ? `${form.quantity} ${form.baseUoM || ""}` : "Enter quantity" },
-    { label: "DMR", value: form.dmrNumber || "Enter DMR number" }
-  ];
-
-  const heroStats = [
-    { label: "Operator", value: user.name, tone: "primary" },
-    {
-      label: "Material",
-      value: form.materialCode || "Pending",
-      tone: form.materialCode ? "success" : "warning"
-    },
-    {
-      label: "Quantity",
-      value: form.quantity || "Pending",
-      tone: form.quantity ? "success" : "warning"
-    },
-    {
-      label: "DMR",
-      value: form.dmrNumber || "Pending",
-      tone: form.dmrNumber ? "success" : "warning"
-    }
-  ];
-
   if (result) {
-    const lookupText = getQrLookupValue(result);
+    const firstLabel = result.labels?.[0];
 
     return (
       <div className="page-stack">
@@ -2157,17 +2718,21 @@ function IssueMaterial() {
           <PageHero
             eyebrow={
               <>
-                {Icons.qr}
-                Issuance Created
+                {Icons.layers}
+                Inward Batch Ready
               </>
             }
-            title="Issuance ready"
-            description="Print the QR label now or move directly into the next issuance."
+            title="Inward labels ready"
+            description="Print and stick the labels."
             actions={
               <>
-                <button type="button" className="btn btn-primary" onClick={handlePrint}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => printStockLabels(result.labels, "Inward Stock Labels")}
+                >
                   {Icons.printer}
-                  Print
+                  Print {result.totalLabels} Labels
                 </button>
                 <button
                   type="button"
@@ -2175,21 +2740,521 @@ function IssueMaterial() {
                   onClick={() => setResult(null)}
                 >
                   {Icons.plus}
-                  New Issue
+                  New Inward Batch
                 </button>
               </>
             }
             stats={[
-              { label: "Issuance ID", value: result.issuanceId, tone: "primary" },
-              { label: "Status", value: statusLabel(result.status), tone: "success" },
-              { label: "QR Lookup", value: lookupText, tone: "warning" },
-              { label: "Issued At", value: toIST(result.issuedAt), tone: "danger" }
+              { label: "Batch ID", value: result.inwardBatchId, tone: "primary" },
+              { label: "Labels", value: result.totalLabels, tone: "success" },
+              { label: "Total Qty", value: result.totalQuantity, tone: "warning" },
+              { label: "Printed At", value: firstLabel ? toIST(firstLabel.inwardPrintedAt) : "—", tone: "danger" }
             ]}
             aside={
               <div className="workflow-step compact">
-                <span className="step-label">QR Lookup</span>
-                <strong>Resolve {lookupText}</strong>
-                <p>Print the label or start the next issuance.</p>
+                <span className="step-label">Next Step</span>
+                <strong>Stick one label on each pallet</strong>
+              </div>
+            }
+          />
+        </Reveal>
+
+        <TutorialPanel page="inward" />
+
+        <div className="detail-grid">
+          <Reveal delay={90}>
+            <section className="surface-card">
+              <div className="surface-header">
+                <div className="surface-title">
+                  <h3>Batch Summary</h3>
+                </div>
+              </div>
+              <div className="surface-body stack">
+                <SummaryGrid
+                  items={[
+                    { label: "Material Code", value: firstLabel?.materialCode || "—" },
+                    { label: "Description", value: firstLabel?.materialDescription || "—" },
+                    {
+                      label: "Qty / Pallet",
+                      value: firstLabel ? `${firstLabel.currentQuantity} ${firstLabel.baseUoM || ""}` : "—"
+                    },
+                    { label: "Pallet Count", value: result.totalLabels },
+                    { label: "DMR Number", value: firstLabel?.dmrNumber || "—" },
+                    { label: "DMR Date", value: firstLabel?.dmrDate ? toISTDate(firstLabel.dmrDate) : "—" },
+                    { label: "Make", value: firstLabel?.make || "—" },
+                    { label: "Vendor", value: firstLabel?.vendorName || "—" }
+                  ]}
+                />
+              </div>
+            </section>
+          </Reveal>
+
+          <Reveal delay={140}>
+            <section className="surface-card alt">
+              <div className="surface-header">
+                <div className="surface-title">
+                  <h3>Sample Labels</h3>
+                </div>
+              </div>
+              <div className="surface-body stack">
+                <div className="record-list">
+                  {(result.labels || []).slice(0, 8).map((label) => (
+                    <article key={label.stockLabelId} className="record-card compact">
+                      <div className="record-card-head">
+                        <div>
+                          <div className="record-card-kicker">Stock Label</div>
+                          <div className="record-card-title mono">{label.stockLabelId}</div>
+                        </div>
+                        <strong>{label.palletSequence} / {label.palletCount}</strong>
+                      </div>
+                      <div className="record-card-copy">
+                        <strong>{label.materialCode}</strong>
+                        <span>{label.vendorName}</span>
+                      </div>
+                      <div className="record-card-grid">
+                        <div className="record-field">
+                          <span>Quantity</span>
+                          <strong>{label.currentQuantity} {label.baseUoM || ""}</strong>
+                        </div>
+                        <div className="record-field">
+                          <span>Printed</span>
+                          <strong>{toIST(label.inwardPrintedAt)}</strong>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                {result.labels?.length > 8 && (
+                  <div className="callout info">
+                    <strong>Preview trimmed</strong>
+                    <p>Printing still includes all {result.totalLabels} labels.</p>
+                  </div>
+                )}
+              </div>
+            </section>
+          </Reveal>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page-stack">
+      <Reveal>
+        <PageHero
+          eyebrow={
+            <>
+              {Icons.layers}
+              Stores
+            </>
+          }
+          title="Print inward labels"
+          description="Create one QR per pallet."
+          stats={[
+            { label: "Operator", value: user.name, tone: "primary" },
+            { label: "Material", value: form.materialCode || "Pending", tone: form.materialCode ? "success" : "warning" },
+            {
+              label: "Pallets",
+              value: form.labelCount || "Pending",
+              tone: form.labelCount ? "success" : "warning"
+            },
+            {
+              label: "Total Qty",
+              value: totalQuantity ? `${totalQuantity} ${form.baseUoM || ""}` : "Pending",
+              tone: totalQuantity ? "danger" : "warning"
+            }
+          ]}
+          aside={
+            <div className="workflow-step compact">
+              <span className="step-label">Output</span>
+              <strong>One QR per pallet</strong>
+            </div>
+          }
+        />
+      </Reveal>
+
+      <TutorialPanel page="inward" />
+
+      <div className="form-layout">
+        <Reveal delay={90}>
+          <section className="surface-card">
+            <div className="surface-header">
+              <div className="surface-title">
+                <h3>Inward batch details</h3>
+              </div>
+            </div>
+            <div className="surface-body stack">
+              <div className="field">
+                <label>Material Code or Description</label>
+                <MaterialAutocomplete
+                  value={form.materialCode}
+                  onChange={handleMaterialCodeChange}
+                  onSelect={handleMaterialSelect}
+                />
+              </div>
+
+              <div className="field-grid">
+                <div className="field">
+                  <label>Quantity Per Pallet</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={form.quantityPerLabel}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, quantityPerLabel: event.target.value }))
+                    }
+                    placeholder="Enter quantity per pallet"
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Number of Pallets</label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={form.labelCount}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, labelCount: event.target.value }))
+                    }
+                    placeholder="Enter pallet count"
+                  />
+                </div>
+              </div>
+
+              <div className="field-grid">
+                <div className="field">
+                  <label>DMR Number</label>
+                  <input
+                    value={form.dmrNumber}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, dmrNumber: event.target.value }))
+                    }
+                    placeholder="Enter DMR number"
+                  />
+                </div>
+
+                <div className="field">
+                  <label>DMR Date</label>
+                  <input
+                    type="date"
+                    value={form.dmrDate}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, dmrDate: event.target.value }))
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="field-grid">
+                <div className="field">
+                  <label>Make</label>
+                  <input
+                    value={form.make}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, make: event.target.value }))
+                    }
+                    placeholder="Enter make"
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Vendor Name</label>
+                  <select
+                    value={form.vendorName}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, vendorName: event.target.value }))
+                    }
+                  >
+                    <option value="">Select vendor</option>
+                    {vendorOptions.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                    <option value={customVendorValue}>Add custom vendor</option>
+                  </select>
+                </div>
+              </div>
+
+              {form.vendorName === customVendorValue && (
+                <div className="field">
+                  <label>Custom Vendor</label>
+                  <input
+                    value={form.customVendorName}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, customVendorName: event.target.value }))
+                    }
+                    placeholder="Enter vendor name"
+                  />
+                </div>
+              )}
+
+              <div className="field">
+                <label>Printed Time (IST)</label>
+                <div className="input-like">{toIST(new Date())}</div>
+              </div>
+            </div>
+          </section>
+        </Reveal>
+
+        <Reveal delay={140}>
+          <section className="surface-card alt">
+            <div className="surface-header">
+              <div className="surface-title">
+                <h3>Batch readiness</h3>
+              </div>
+            </div>
+            <div className="surface-body stack">
+              <SummaryGrid items={previewItems} />
+            </div>
+          </section>
+        </Reveal>
+      </div>
+
+      <Reveal delay={190}>
+        <ActionDock>
+          {(form.materialCode || form.quantityPerLabel || form.labelCount || form.dmrNumber || form.make) && (
+            <button type="button" className="btn btn-secondary" onClick={resetForm}>
+              {Icons.close}
+              Clear
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleCreateBatch}
+            disabled={
+              loading ||
+              !form.materialCode ||
+              !form.quantityPerLabel ||
+              !form.labelCount ||
+              !form.dmrNumber ||
+              !form.dmrDate ||
+              !form.make ||
+              !resolvedVendorName
+            }
+          >
+            {Icons.qr}
+            {loading ? "Creating Labels..." : "Create Inward Labels"}
+          </button>
+        </ActionDock>
+      </Reveal>
+    </div>
+  );
+}
+
+function IssueStock() {
+  const { toast, user } = useContext(AppContext);
+  const [labels, setLabels] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [search, setSearch] = useState("");
+  const [vendorFilter, setVendorFilter] = useState("");
+  const [vendorOptions, setVendorOptions] = useState([]);
+  const [selected, setSelected] = useState(new Set());
+  const [issueDrafts, setIssueDrafts] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [issuing, setIssuing] = useState(false);
+  const [result, setResult] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadFilters() {
+      try {
+        const data = await api("/api/stock-labels/filters");
+        if (!cancelled) setVendorOptions(data.vendorNames || []);
+      } catch (e) {}
+    }
+
+    loadFilters();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, vendorFilter, pageSize]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLabels() {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({
+          availableOnly: "true",
+          page,
+          limit: pageSize,
+          search
+        });
+        if (vendorFilter) params.set("vendorName", vendorFilter);
+
+        const data = await api(`/api/stock-labels?${params.toString()}`);
+        if (!cancelled) {
+          setLabels(data.labels || []);
+          setTotal(data.total || 0);
+          setPages(data.pages || 1);
+          setSelected(new Set());
+          setIssueDrafts({});
+        }
+      } catch (e) {
+        if (!cancelled) toast(e.message, "error");
+      }
+      if (!cancelled) setLoading(false);
+    }
+
+    loadLabels();
+    return () => {
+      cancelled = true;
+    };
+  }, [page, pageSize, search, vendorFilter, refreshKey, toast]);
+
+  const toggleRow = (label, checked) => {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (checked) next.add(label.stockLabelId);
+      else next.delete(label.stockLabelId);
+      return next;
+    });
+
+    setIssueDrafts((current) => {
+      const next = { ...current };
+      if (checked) next[label.stockLabelId] = String(label.currentQuantity);
+      else delete next[label.stockLabelId];
+      return next;
+    });
+  };
+
+  const allVisibleSelected = labels.length > 0 && labels.every((label) => selected.has(label.stockLabelId));
+  const selectedLabels = labels.filter((label) => selected.has(label.stockLabelId));
+  const selectedQuantity = selectedLabels.reduce(
+    (sum, label) => sum + (Number(issueDrafts[label.stockLabelId]) || 0),
+    0
+  );
+  const partialCount = selectedLabels.filter((label) => {
+    const draft = Number(issueDrafts[label.stockLabelId] || 0);
+    return draft > 0 && draft < Number(label.currentQuantity || 0);
+  }).length;
+  const visibleWindow = pageWindow(page, pageSize, total);
+
+  const handleSelectAll = (checked) => {
+    if (!checked) {
+      setSelected(new Set());
+      setIssueDrafts({});
+      return;
+    }
+
+    setSelected(new Set(labels.map((label) => label.stockLabelId)));
+    setIssueDrafts(
+      labels.reduce((accumulator, label) => {
+        accumulator[label.stockLabelId] = String(label.currentQuantity);
+        return accumulator;
+      }, {})
+    );
+  };
+
+  const handleIssue = async () => {
+    if (selectedLabels.length === 0) {
+      toast("Select at least one active stock label to issue.", "error");
+      return;
+    }
+
+    const items = selectedLabels.map((label) => ({
+      stockLabelId: label.stockLabelId,
+      issueQuantity: Number(issueDrafts[label.stockLabelId] || 0)
+    }));
+
+    const invalidItem = items.find(
+      (item) =>
+        !item.issueQuantity ||
+        item.issueQuantity <= 0 ||
+        item.issueQuantity > Number(
+          labels.find((label) => label.stockLabelId === item.stockLabelId)?.currentQuantity || 0
+        )
+    );
+
+    if (invalidItem) {
+      toast("Each selected label needs a valid issue quantity within the available balance.", "error");
+      return;
+    }
+
+    setIssuing(true);
+    try {
+      const data = await api("/api/issuances", {
+        method: "POST",
+        body: JSON.stringify({ items })
+      });
+      setResult(data);
+      setRefreshKey((current) => current + 1);
+      toast(`Created ${data.createdCount} issue QR label${data.createdCount === 1 ? "" : "s"}.`, "success");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+    setIssuing(false);
+  };
+
+  if (result) {
+    const lastIssuance = result.issuances?.[0];
+
+    return (
+      <div className="page-stack">
+        <Reveal>
+          <PageHero
+            eyebrow={
+              <>
+                {Icons.send}
+                Issue Labels Ready
+              </>
+            }
+            title="Issue labels ready"
+            description="Print issue and balance labels."
+            actions={
+              <>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => printIssueLabels(result.issuances)}
+                >
+                  {Icons.printer}
+                  Print Issue Labels
+                </button>
+                {result.balanceLabels?.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => printStockLabels(result.balanceLabels, "Balance Stock Labels")}
+                  >
+                    {Icons.printer}
+                    Print Balance Labels
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setResult(null)}
+                >
+                  {Icons.layers}
+                  Back to Stock Queue
+                </button>
+              </>
+            }
+            stats={[
+              { label: "Issue Labels", value: result.createdCount, tone: "primary" },
+              { label: "Balance Reprints", value: result.balanceLabels?.length || 0, tone: "success" },
+              { label: "Fully Depleted", value: result.depletedCount || 0, tone: "warning" },
+              { label: "Issued At", value: lastIssuance ? toIST(lastIssuance.issuedAt) : "—", tone: "danger" }
+            ]}
+            aside={
+              <div className="workflow-step compact">
+                <span className="step-label">Result</span>
+                <strong>Source labels stay traceable</strong>
               </div>
             }
           />
@@ -2202,16 +3267,36 @@ function IssueMaterial() {
             <section className="surface-card">
               <div className="surface-header">
                 <div className="surface-title">
-                  <h3>Printable QR Label</h3>
+                  <h3>Issued Movements</h3>
                 </div>
               </div>
               <div className="surface-body stack">
-                <div className="qr-frame">
-                  <img src={result.qrCodeData} alt="Issuance QR Code" />
-                </div>
-                <div className="callout success">
-                  <strong>QR lookup text</strong>
-                  <p className="mono">{lookupText}</p>
+                <div className="record-list">
+                  {(result.issuances || []).slice(0, 8).map((item) => (
+                    <article key={item.issuanceId} className="record-card compact">
+                      <div className="record-card-head">
+                        <div>
+                          <div className="record-card-kicker">Issue Label</div>
+                          <div className="record-card-title mono">{item.issuanceId}</div>
+                        </div>
+                        <StatusBadge status={item.status} />
+                      </div>
+                      <div className="record-card-copy">
+                        <strong>{item.materialCode}</strong>
+                        <span>{item.sourceLabelId || "—"}</span>
+                      </div>
+                      <div className="record-card-grid">
+                        <div className="record-field">
+                          <span>Issued Qty</span>
+                          <strong>{item.quantity} {item.baseUoM || ""}</strong>
+                        </div>
+                        <div className="record-field">
+                          <span>Vendor</span>
+                          <strong>{item.vendorName || "—"}</strong>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
                 </div>
               </div>
             </section>
@@ -2221,22 +3306,44 @@ function IssueMaterial() {
             <section className="surface-card alt">
               <div className="surface-header">
                 <div className="surface-title">
-                  <h3>Label Summary</h3>
+                  <h3>Balance Label Reprints</h3>
                 </div>
               </div>
               <div className="surface-body stack">
-                <SummaryGrid
-                  items={[
-                    { label: "Material Code", value: result.materialCode },
-                    { label: "Description", value: result.materialDescription || "—" },
-                    { label: "Quantity", value: `${result.quantity} ${result.baseUoM}` },
-                    { label: "DMR Number", value: result.dmrNumber },
-                    { label: "Issued By", value: result.issuedByName },
-                    { label: "Issued At", value: toIST(result.issuedAt) },
-                    { label: "Status", value: statusLabel(result.status) },
-                    { label: "QR Lookup Text", value: lookupText, className: "mono" }
-                  ]}
-                />
+                {result.balanceLabels?.length ? (
+                  <div className="record-list">
+                    {result.balanceLabels.slice(0, 8).map((label) => (
+                      <article key={label.stockLabelId} className="record-card compact">
+                        <div className="record-card-head">
+                          <div>
+                            <div className="record-card-kicker">Balance Label</div>
+                            <div className="record-card-title mono">{label.stockLabelId}</div>
+                          </div>
+                          <strong>Rev {label.revision}</strong>
+                        </div>
+                        <div className="record-card-copy">
+                          <strong>{label.materialCode}</strong>
+                          <span>{label.vendorName}</span>
+                        </div>
+                        <div className="record-card-grid">
+                          <div className="record-field">
+                            <span>Remaining Qty</span>
+                            <strong>{label.currentQuantity} {label.baseUoM || ""}</strong>
+                          </div>
+                          <div className="record-field">
+                            <span>Source Batch</span>
+                            <strong>{label.inwardBatchId}</strong>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState
+                    title="No balance reprints required"
+                    copy="All selected labels were issued in full."
+                  />
+                )}
               </div>
             </section>
           </Reveal>
@@ -2252,122 +3359,281 @@ function IssueMaterial() {
           eyebrow={
             <>
               {Icons.send}
-              Operations
+              Stores
             </>
           }
-          title="Issue material"
-          description="Search the material, confirm movement details, and generate the receipt label."
-          stats={heroStats}
-          aside={
-            <div className="workflow-step compact">
-              <span className="step-label">Label Payload</span>
-              <strong>Issuance ID</strong>
-              <p>Generated after submit and used during receipt.</p>
-            </div>
-          }
+          title="Issue stock labels"
+          description="Issue from active stock."
+          stats={[
+            { label: "Selected Labels", value: selected.size, tone: "primary" },
+            {
+              label: "Selected Qty",
+              value: selectedQuantity ? `${selectedQuantity}` : "Pending",
+              tone: selectedQuantity ? "success" : "warning"
+            },
+            {
+              label: "Partial Issues",
+              value: partialCount || 0,
+              tone: partialCount ? "danger" : "warning"
+            },
+            { label: "Operator", value: user.name, tone: "warning" }
+          ]}
         />
       </Reveal>
 
       <TutorialPanel page="issue" />
 
-      <div className="form-layout">
-        <Reveal delay={90}>
-          <section className="surface-card">
-            <div className="surface-header">
-              <div className="surface-title">
-                <h3>Issue details</h3>
-              </div>
-            </div>
-            <div className="surface-body stack">
-              <div className="field">
-                <label>Material Code or Description</label>
-                <MaterialAutocomplete
-                  value={form.materialCode}
-                  onChange={handleMaterialCodeChange}
-                  onSelect={handleMaterialSelect}
+      <Reveal delay={90}>
+        <section className="surface-card">
+          <div className="toolbar">
+            <div className="toolbar-row">
+              <div className="search-box">
+                {Icons.search}
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search stock label, material, vendor, DMR, or batch"
                 />
               </div>
 
-              {form.materialDescription && (
-                <div className="callout info">
-                  <strong>Linked material</strong>
-                  <p>
-                    {form.materialDescription} • {form.materialType || "No type"} •{" "}
-                    {form.baseUoM || "No UoM"}
-                  </p>
-                </div>
-              )}
+              <select
+                className="filter-select"
+                value={vendorFilter}
+                onChange={(event) => setVendorFilter(event.target.value)}
+              >
+                <option value="">All Vendors</option>
+                {vendorOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-              <div className="field-grid">
-                <div className="field">
-                  <label>Quantity</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={form.quantity}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, quantity: event.target.value }))
-                    }
-                    placeholder="Enter quantity"
-                  />
-                </div>
-
-                <div className="field">
-                  <label>DMR Number</label>
-                  <input
-                    value={form.dmrNumber}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, dmrNumber: event.target.value }))
-                    }
-                    placeholder="Enter DMR number"
-                  />
-                </div>
+            <div className="toolbar-row">
+              <div className="kpi-strip">
+                <span className="kpi-pill">{total.toLocaleString()} active labels</span>
+                <span className="kpi-pill">{selected.size} selected</span>
+                <span className="kpi-pill">{partialCount} partial</span>
               </div>
 
-              <div className="field">
-                <label>Time (IST)</label>
-                <div className="input-like">{toIST(new Date())}</div>
+              <div className="toolbar-actions">
+                <PageSizeControl value={pageSize} onChange={setPageSize} compact />
               </div>
             </div>
-          </section>
-        </Reveal>
+          </div>
 
-        <Reveal delay={140}>
-          <section className="surface-card alt">
-            <div className="surface-header">
-              <div className="surface-title">
-                <h3>Ready check</h3>
+          <div className="table-wrap desktop-only">
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ width: 38 }}>
+                    <input
+                      type="checkbox"
+                      className="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={(event) => handleSelectAll(event.target.checked)}
+                    />
+                  </th>
+                  <th>Stock Label</th>
+                  <th>Material</th>
+                  <th>Available Qty</th>
+                  <th>Issue Qty</th>
+                  <th>Vendor</th>
+                  <th>Printed At</th>
+                </tr>
+              </thead>
+              <tbody>
+                {labels.length === 0 ? (
+                  <tr>
+                    <td colSpan="7">
+                      <EmptyState
+                        title={loading ? "Loading active stock..." : "No active stock labels found"}
+                        copy="Create inward labels or clear filters."
+                      />
+                    </td>
+                  </tr>
+                ) : (
+                  labels.map((label) => {
+                    const checked = selected.has(label.stockLabelId);
+                    return (
+                      <tr key={label.stockLabelId}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            className="checkbox"
+                            checked={checked}
+                            onChange={(event) => toggleRow(label, event.target.checked)}
+                          />
+                        </td>
+                        <td>
+                          <div className="mono" style={{ color: "var(--primary)", fontWeight: 700 }}>
+                            {label.stockLabelId}
+                          </div>
+                          <div className="muted">{label.inwardBatchId} • {label.palletSequence}/{label.palletCount}</div>
+                        </td>
+                        <td>
+                          <div style={{ fontWeight: 700, color: "var(--ink)" }}>{label.materialCode}</div>
+                          <div className="muted">{clip(label.materialDescription, 44)}</div>
+                        </td>
+                        <td className="mono">{label.currentQuantity} {label.baseUoM || ""}</td>
+                        <td>
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            className="filter-input"
+                            style={{ maxWidth: 120 }}
+                            disabled={!checked}
+                            value={issueDrafts[label.stockLabelId] ?? ""}
+                            onChange={(event) =>
+                              setIssueDrafts((current) => ({
+                                ...current,
+                                [label.stockLabelId]: event.target.value
+                              }))
+                            }
+                          />
+                        </td>
+                        <td>
+                          <div>{label.vendorName}</div>
+                          <div className="muted">{label.dmrNumber}</div>
+                        </td>
+                        <td>{toIST(label.inwardPrintedAt)}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="surface-body mobile-only">
+            {labels.length === 0 ? (
+              <EmptyState
+                title={loading ? "Loading active stock..." : "No active stock labels found"}
+                copy="Create inward labels or clear filters."
+              />
+            ) : (
+              <div className="record-list">
+                {labels.map((label) => {
+                  const checked = selected.has(label.stockLabelId);
+                  return (
+                    <article key={label.stockLabelId} className="record-card">
+                      <div className="record-card-head">
+                        <div>
+                          <div className="record-card-kicker">Stock Label</div>
+                          <div className="record-card-title mono">{label.stockLabelId}</div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          className="checkbox"
+                          checked={checked}
+                          onChange={(event) => toggleRow(label, event.target.checked)}
+                        />
+                      </div>
+                      <div className="record-card-copy">
+                        <strong>{label.materialCode}</strong>
+                        <span>{label.vendorName} • {label.dmrNumber}</span>
+                      </div>
+                      <div className="record-card-grid">
+                        <div className="record-field">
+                          <span>Available</span>
+                          <strong>{label.currentQuantity} {label.baseUoM || ""}</strong>
+                        </div>
+                        <div className="record-field">
+                          <span>Printed</span>
+                          <strong>{toIST(label.inwardPrintedAt)}</strong>
+                        </div>
+                      </div>
+                      <div className="field">
+                        <label>Issue Quantity</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          disabled={!checked}
+                          value={issueDrafts[label.stockLabelId] ?? ""}
+                          onChange={(event) =>
+                            setIssueDrafts((current) => ({
+                              ...current,
+                              [label.stockLabelId]: event.target.value
+                            }))
+                          }
+                        />
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
-            </div>
-            <div className="surface-body stack">
-              <SummaryGrid items={previewItems} />
+            )}
+          </div>
 
-              <div className="callout warning">
-                <strong>QR text</strong>
-                <p>The generated label stores the issuance ID used by receipt.</p>
-              </div>
+          <div className="table-footer">
+            <div className="muted">
+              Showing {visibleWindow.start} to {visibleWindow.end} of {total}
             </div>
-          </section>
-        </Reveal>
-      </div>
+            <div className="pagination">
+              <button
+                type="button"
+                className="btn btn-secondary btn-compact"
+                disabled={page <= 1}
+                onClick={() => setPage(1)}
+              >
+                «
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-compact"
+                disabled={page <= 1}
+                onClick={() => setPage((current) => current - 1)}
+              >
+                ‹
+              </button>
+              <div className="page-index mono">{page} / {pages}</div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-compact"
+                disabled={page >= pages}
+                onClick={() => setPage((current) => current + 1)}
+              >
+                ›
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-compact"
+                disabled={page >= pages}
+                onClick={() => setPage(pages)}
+              >
+                »
+              </button>
+            </div>
+          </div>
+        </section>
+      </Reveal>
 
-      <Reveal delay={190}>
+      <Reveal delay={180}>
         <ActionDock>
-          {(form.materialCode || form.quantity || form.dmrNumber) && (
-            <button type="button" className="btn btn-secondary" onClick={resetForm}>
+          {selected.size > 0 && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setSelected(new Set());
+                setIssueDrafts({});
+              }}
+            >
               {Icons.close}
-              Clear
+              Clear Selection
             </button>
           )}
           <button
             type="button"
             className="btn btn-primary"
             onClick={handleIssue}
-            disabled={loading || !form.materialCode || !form.quantity || !form.dmrNumber}
+            disabled={issuing || selected.size === 0}
           >
             {Icons.qr}
-            {loading ? "Generating..." : "Generate Label"}
+            {issuing ? "Creating Issue Labels..." : "Create Issue Labels"}
           </button>
         </ActionDock>
       </Reveal>
@@ -2524,10 +3790,11 @@ function ScanReceive() {
     !scanTrace?.lookupKey ||
     scanTrace.lookupKey === storedLookupText ||
     scanTrace.lookupKey === issuance.issuanceId;
+  const tat = getIssuanceTat(issuance);
 
   const heroStats = issuance
     ? [
-        { label: "Issuance ID", value: issuance.issuanceId, tone: "primary" },
+        { label: "Issue ID", value: issuance.issuanceId, tone: "primary" },
         { label: "Scanned Key", value: scanTrace?.lookupKey || "—", tone: "success" },
         { label: "Stored QR Key", value: storedLookupText, tone: "warning" },
         { label: "Status", value: statusLabel(issuance.status), tone: "danger" }
@@ -2535,7 +3802,7 @@ function ScanReceive() {
     : [
         { label: "Lane", value: roleLabel(user.role), tone: "primary" },
         { label: "Scanner", value: scanning ? "Live" : "Idle", tone: "success" },
-        { label: "QR Standard", value: "Issuance ID", tone: "warning" },
+        { label: "QR Standard", value: "Issue QR", tone: "warning" },
         { label: "Fallback", value: "Manual Lookup", tone: "danger" }
       ];
 
@@ -2552,21 +3819,14 @@ function ScanReceive() {
           title={issuance ? "Receipt review" : "Receive material"}
           description={
             issuance
-              ? "Validate the trace, review the record, and capture the receipt outcome."
-              : "Scan a label or use manual lookup to open the receipt review."
+              ? "Review and complete the handoff."
+              : "Scan or search an issue label."
           }
           stats={heroStats}
           aside={
             <div className="workflow-step compact">
               <span className="step-label">Next Action</span>
               <strong>{issuance ? (issuance.status === "issued" ? "Accept or reject" : "Review only") : "Start with scan"}</strong>
-              <p>
-                {issuance
-                  ? issuance.status === "issued"
-                    ? "Reject requires remarks."
-                    : "This record already has a receipt decision."
-                  : "Camera scan is fastest; manual lookup stays available."}
-              </p>
             </div>
           }
         />
@@ -2623,29 +3883,13 @@ function ScanReceive() {
                 </div>
                 <div className="surface-body stack">
                   <div className="field">
-                    <label>Issuance ID or scanned text</label>
+                    <label>Issue ID or QR text</label>
                     <input
                       value={manualId}
                       onChange={(event) => setManualId(event.target.value)}
                       onKeyDown={(event) => event.key === "Enter" && handleManualLookup()}
                       placeholder="e.g. MG-260320-ABC12"
                     />
-                  </div>
-
-                  <div className="callout info">
-                    <strong>Accepted inputs</strong>
-                    <p>Issuance ID, raw QR text, or legacy JSON payload.</p>
-                  </div>
-
-                  <div className="checklist">
-                    <div className="checklist-item">
-                      {Icons.check}
-                      <span>Open camera for live labels on the shop floor.</span>
-                    </div>
-                    <div className="checklist-item">
-                      {Icons.check}
-                      <span>Paste the scan text when a scanner feeds data into another system.</span>
-                    </div>
                   </div>
                 </div>
               </section>
@@ -2708,16 +3952,16 @@ function ScanReceive() {
                       <strong>
                         {issuance.status === "issued"
                           ? lookupMatches
-                            ? "Lookup matches."
-                            : "Lookup mismatch."
+                            ? "Lookup matches"
+                            : "Lookup mismatch"
                           : `Already ${issuance.status}.`}
                       </strong>
                       <p>
                         {issuance.status === "issued"
                           ? lookupMatches
-                            ? "Scan text and receipt key are aligned."
-                            : "Review the trace before you act."
-                          : "Trace is available for review only."}
+                            ? "Ready for action."
+                            : "Review before acting."
+                          : "This record is read only."}
                       </p>
                     </div>
                   </div>
@@ -2780,16 +4024,26 @@ function ScanReceive() {
                   <DetailRows
                     items={[
                       { label: "Issuance ID", value: issuance.issuanceId, className: "mono" },
+                      { label: "Source Stock Label", value: issuance.sourceLabelId || "—", className: "mono" },
                       { label: "Material Code", value: issuance.materialCode, className: "mono" },
                       { label: "Description", value: issuance.materialDescription || "—" },
                       { label: "Quantity", value: `${issuance.quantity} ${issuance.baseUoM || ""}` },
                       { label: "DMR Number", value: issuance.dmrNumber },
+                      { label: "DMR Date", value: issuance.dmrDate ? toISTDate(issuance.dmrDate) : "—" },
+                      { label: "Make", value: issuance.make || "—" },
+                      { label: "Vendor", value: issuance.vendorName || "—" },
+                      {
+                        label: "Inward Printed",
+                        value: issuance.sourceInwardPrintedAt ? toIST(issuance.sourceInwardPrintedAt) : "—"
+                      },
                       { label: "Issued By", value: issuance.issuedByName || "—" },
                       { label: "Issued At", value: toIST(issuance.issuedAt) },
+                      { label: "Inward to Issue TAT", value: toTatLabel(tat.inwardToIssueMinutes) },
+                      { label: "Issue to Accept TAT", value: toTatLabel(tat.issueToReceiveMinutes) },
                       { label: "Stored QR Key", value: storedLookupText, className: "mono" },
                       {
                         label: "Receipt Remarks",
-                        value: issuance.receiptRemarks || "Awaiting action."
+                        value: issuance.receiptRemarks || "—"
                       }
                     ]}
                   />
@@ -2926,17 +4180,25 @@ function IssuanceHistory() {
 
       const clean = data.map((item) => ({
         "Issuance ID": item.issuanceId,
+        "Source Stock Label": item.sourceLabelId || "",
         "Material Code": item.materialCode,
         Description: item.materialDescription,
         "Material Type": item.materialType,
         "Base UoM": item.baseUoM,
         Quantity: item.quantity,
         "DMR Number": item.dmrNumber,
+        "DMR Date (IST)": item.dmrDate ? toISTDate(item.dmrDate) : "",
+        Make: item.make || "",
+        Vendor: item.vendorName || "",
+        "Inward Printed At (IST)": item.sourceInwardPrintedAt ? toIST(item.sourceInwardPrintedAt) : "",
         "Issued By": item.issuedByName,
         "Issued At (IST)": toIST(item.issuedAt),
         Status: statusLabel(item.status),
         "Received By": item.receivedByName || "",
         "Received At (IST)": item.receivedAt ? toIST(item.receivedAt) : "",
+        "Inward To Issue TAT": toTatLabel(getIssuanceTat(item).inwardToIssueMinutes),
+        "Issue To Accept TAT": toTatLabel(getIssuanceTat(item).issueToReceiveMinutes),
+        "End To End TAT": toTatLabel(getIssuanceTat(item).inwardToReceiveMinutes),
         Remarks: item.receiptRemarks || "",
         "QR Lookup Text": getQrLookupValue(item)
       }));
@@ -2977,8 +4239,8 @@ function IssuanceHistory() {
               Records
             </>
           }
-          title="Issuance history"
-          description="Filter, inspect, and export movement records for audit and operational follow-up."
+          title="Movement history"
+          description="Search and export movement records."
           actions={
             <>
               <button
@@ -3016,7 +4278,7 @@ function IssuanceHistory() {
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search issuance ID, material, or DMR"
+                  placeholder="Search issue, source label, material, vendor, or DMR"
                 />
               </div>
 
@@ -3078,9 +4340,10 @@ function IssuanceHistory() {
                     />
                   </th>
                   <th onClick={() => handleSort("issuanceId")}>
-                    Issuance ID
+                    Issue ID
                     <SortArrow column="issuanceId" />
                   </th>
+                  <th>Source Label</th>
                   <th onClick={() => handleSort("materialCode")}>
                     Material
                     <SortArrow column="materialCode" />
@@ -3089,7 +4352,6 @@ function IssuanceHistory() {
                     Quantity
                     <SortArrow column="quantity" />
                   </th>
-                  <th>DMR</th>
                   <th onClick={() => handleSort("status")}>
                     Status
                     <SortArrow column="status" />
@@ -3108,7 +4370,7 @@ function IssuanceHistory() {
                     <td colSpan="9">
                       <EmptyState
                         title={loading ? "Loading history..." : "No issuances found"}
-                        copy="Clear filters or issue new records."
+                        copy="Clear filters or issue stock."
                       />
                     </td>
                   </tr>
@@ -3133,16 +4395,16 @@ function IssuanceHistory() {
                       <td className="mono" style={{ color: "var(--primary)", fontWeight: 700 }}>
                         {item.issuanceId}
                       </td>
+                      <td className="mono">{item.sourceLabelId || "—"}</td>
                       <td>
                         <div className="mono" style={{ color: "var(--ink)" }}>
                           {item.materialCode}
                         </div>
-                        <div className="muted">{clip(item.materialDescription, 44)}</div>
+                        <div className="muted">{clip(item.vendorName || item.materialDescription, 44)}</div>
                       </td>
                       <td className="mono">
                         {item.quantity} {item.baseUoM || ""}
                       </td>
-                      <td className="mono">{item.dmrNumber}</td>
                       <td>
                         <StatusBadge status={item.status} />
                       </td>
@@ -3169,7 +4431,7 @@ function IssuanceHistory() {
             {issuances.length === 0 ? (
               <EmptyState
                 title={loading ? "Loading history..." : "No issuances found"}
-                copy="Clear filters or issue new records."
+                copy="Clear filters or issue stock."
               />
             ) : (
               <div className="record-list">
@@ -3177,7 +4439,7 @@ function IssuanceHistory() {
                   <article key={item._id} className="record-card">
                     <div className="record-card-head">
                       <div>
-                        <div className="record-card-kicker">Issuance</div>
+                        <div className="record-card-kicker">Issue</div>
                         <div className="record-card-title mono">{item.issuanceId}</div>
                       </div>
                       <StatusBadge status={item.status} />
@@ -3185,19 +4447,19 @@ function IssuanceHistory() {
 
                     <div className="record-card-copy">
                       <strong>{item.materialCode}</strong>
-                      <span>{clip(item.materialDescription, 84)}</span>
+                      <span>{item.sourceLabelId || clip(item.materialDescription, 84)}</span>
                     </div>
 
                     <div className="record-card-grid">
+                      <div className="record-field">
+                        <span>Source Label</span>
+                        <strong className="mono">{item.sourceLabelId || "—"}</strong>
+                      </div>
                       <div className="record-field">
                         <span>Quantity</span>
                         <strong className="mono">
                           {item.quantity} {item.baseUoM || ""}
                         </strong>
-                      </div>
-                      <div className="record-field">
-                        <span>DMR</span>
-                        <strong className="mono">{item.dmrNumber}</strong>
                       </div>
                       <div className="record-field">
                         <span>Issued At</span>
@@ -3295,64 +4557,44 @@ function IssuanceHistory() {
 
 function IssuanceDetailModal({ issuance, onClose }) {
   const lookupText = getQrLookupValue(issuance);
+  const tat = getIssuanceTat(issuance);
 
   const handlePrint = () => {
-    const printWindow = window.open("", "_blank", "width=560,height=760");
-    printWindow.document.write(`<!DOCTYPE html>
-      <html>
-      <head>
-        <title>MatGate Label ${issuance.issuanceId}</title>
-        <style>
-          body{margin:0;padding:28px;font-family:Arial,sans-serif;background:#f7f9fc;color:#0f172a}
-          .card{max-width:460px;margin:0 auto;background:#fff;border:1px solid #d8e1ec;border-radius:24px;padding:24px;box-shadow:0 20px 60px rgba(15,23,42,.08)}
-          .eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#47668f;font-weight:700}
-          h1{margin:12px 0 18px;font-size:24px;line-height:1;letter-spacing:-.04em}
-          .row{display:flex;justify-content:space-between;gap:18px;padding:10px 0;border-bottom:1px solid #edf2f7;font-size:13px}
-          .row span:first-child{color:#6b7f97;text-transform:uppercase;letter-spacing:.12em;font-size:10px;font-weight:700}
-          .row span:last-child{text-align:right;font-weight:700}
-          .qr{margin:22px 0;display:grid;place-items:center}
-          .qr img{width:220px;padding:12px;background:#fff;border-radius:22px;box-shadow:0 16px 40px rgba(15,23,42,.08)}
-        </style>
-      </head>
-      <body>
-        <div class="card">
-          <div class="eyebrow">Material Issue Label</div>
-          <h1>${issuance.issuanceId}</h1>
-          <div class="row"><span>Material</span><span>${issuance.materialCode}</span></div>
-          <div class="row"><span>Description</span><span>${clip(issuance.materialDescription, 42)}</span></div>
-          <div class="row"><span>Quantity</span><span>${issuance.quantity} ${issuance.baseUoM || ""}</span></div>
-          <div class="row"><span>DMR</span><span>${issuance.dmrNumber}</span></div>
-          <div class="row"><span>Issued By</span><span>${issuance.issuedByName || ""}</span></div>
-          <div class="row"><span>Issued At</span><span>${toIST(issuance.issuedAt)}</span></div>
-          <div class="row"><span>QR Lookup Text</span><span>${lookupText}</span></div>
-          <div class="qr"><img src="${issuance.qrCodeData}" alt="QR Code" /></div>
-        </div>
-      </body>
-      </html>`);
-    printWindow.document.close();
-    setTimeout(() => printWindow.print(), 400);
+    printIssueLabels([issuance]);
   };
 
   return (
-    <Modal title={`Issuance ${issuance.issuanceId}`} onClose={onClose} large>
+    <Modal title={`Issue ${issuance.issuanceId}`} onClose={onClose} large>
       <div className="modal-body">
         <div className="detail-grid">
           <section className="surface-card" style={{ boxShadow: "none", background: "transparent" }}>
             <div className="surface-body" style={{ padding: 0 }}>
               <DetailRows
                 items={[
-                  { label: "Issuance ID", value: issuance.issuanceId, className: "mono" },
+                  { label: "Issue ID", value: issuance.issuanceId, className: "mono" },
+                  { label: "Source Stock Label", value: issuance.sourceLabelId || "—", className: "mono" },
+                  { label: "Source Batch", value: issuance.sourceBatchId || "—", className: "mono" },
                   { label: "Material Code", value: issuance.materialCode, className: "mono" },
                   { label: "Description", value: issuance.materialDescription || "—" },
                   { label: "Material Type", value: issuance.materialType || "—" },
                   { label: "Base UoM", value: issuance.baseUoM || "—" },
                   { label: "Quantity", value: issuance.quantity },
                   { label: "DMR Number", value: issuance.dmrNumber },
+                  { label: "DMR Date", value: issuance.dmrDate ? toISTDate(issuance.dmrDate) : "—" },
+                  { label: "Make", value: issuance.make || "—" },
+                  { label: "Vendor", value: issuance.vendorName || "—" },
+                  {
+                    label: "Inward Printed",
+                    value: issuance.sourceInwardPrintedAt ? toIST(issuance.sourceInwardPrintedAt) : "—"
+                  },
                   { label: "Issued By", value: issuance.issuedByName || "—" },
                   { label: "Issued At", value: toIST(issuance.issuedAt) },
                   { label: "Status", value: statusLabel(issuance.status) },
                   { label: "Received By", value: issuance.receivedByName || "—" },
                   { label: "Received At", value: issuance.receivedAt ? toIST(issuance.receivedAt) : "—" },
+                  { label: "Inward to Issue TAT", value: toTatLabel(tat.inwardToIssueMinutes) },
+                  { label: "Issue to Accept TAT", value: toTatLabel(tat.issueToReceiveMinutes) },
+                  { label: "End to End TAT", value: toTatLabel(tat.inwardToReceiveMinutes) },
                   { label: "QR Lookup Text", value: lookupText, className: "mono" },
                   { label: "Remarks", value: issuance.receiptRemarks || "—" }
                 ]}
@@ -3430,7 +4672,7 @@ function AppShell({ user, onLogout }) {
       label: "Overview",
       title: "Dashboard",
       section: "Overview",
-      hint: "Queue and recent activity",
+      hint: "Queue and activity",
       group: "Overview",
       icon: Icons.dashboard,
       roles: ["stores", "production", "admin"]
@@ -3440,17 +4682,27 @@ function AppShell({ user, onLogout }) {
       label: "Materials",
       title: "Material Master",
       section: "Records",
-      hint: "Maintain master data",
+      hint: "Material data",
       group: "Records",
       icon: Icons.database,
       roles: ["stores", "admin"]
     },
     {
+      key: "inward",
+      label: "Inward",
+      title: "Inward Labels",
+      section: "Operations",
+      hint: "Print pallet labels",
+      group: "Operations",
+      icon: Icons.layers,
+      roles: ["stores", "admin"]
+    },
+    {
       key: "issue",
       label: "Issue",
-      title: "Issue Material",
+      title: "Issue Stock",
       section: "Operations",
-      hint: "Create a new issuance",
+      hint: "Issue from stock",
       group: "Operations",
       icon: Icons.send,
       roles: ["stores", "admin"]
@@ -3460,7 +4712,7 @@ function AppShell({ user, onLogout }) {
       label: "Receive",
       title: "Receive Material",
       section: "Operations",
-      hint: "Accept or reject scans",
+      hint: "Receive issue labels",
       group: "Operations",
       icon: Icons.scan,
       roles: ["production", "admin"]
@@ -3468,9 +4720,9 @@ function AppShell({ user, onLogout }) {
     {
       key: "history",
       label: "History",
-      title: "Issuance History",
+      title: "Movement History",
       section: "Records",
-      hint: "Search and export records",
+      hint: "Audit and export",
       group: "Records",
       icon: Icons.history,
       roles: ["stores", "production", "admin"]
@@ -3496,8 +4748,10 @@ function AppShell({ user, onLogout }) {
     switch (activePage) {
       case "masters":
         return <MaterialMaster />;
+      case "inward":
+        return <InwardStock />;
       case "issue":
-        return <IssueMaterial />;
+        return <IssueStock />;
       case "scan":
         return <ScanReceive />;
       case "history":
@@ -3553,7 +4807,7 @@ function AppShell({ user, onLogout }) {
               onClick={() => setTutorialMode((current) => !current)}
             >
               {Icons.spark}
-              {tutorialMode ? "Tutorial On" : "Tutorial Off"}
+              {tutorialMode ? "Guide On" : "Guide Off"}
             </button>
             <div className="context-pill nav-desktop-only">{roleLabel(user.role)}</div>
             <div className="time-pill nav-desktop-only">

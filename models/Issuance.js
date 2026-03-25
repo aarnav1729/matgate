@@ -8,6 +8,17 @@ const issuanceSchema = new mongoose.Schema({
   baseUoM: { type: String, default: '' },
   quantity: { type: Number, required: true },
   dmrNumber: { type: String, required: true },
+  dmrDate: { type: Date, default: null },
+  make: { type: String, default: '' },
+  vendorName: { type: String, default: '' },
+  sourceLabelId: { type: String, default: '' },
+  sourceBatchId: { type: String, default: '' },
+  sourceLabelRevision: { type: Number, default: 1 },
+  sourceInitialQuantity: { type: Number, default: 0 },
+  sourceQuantityBefore: { type: Number, default: 0 },
+  sourceQuantityAfter: { type: Number, default: 0 },
+  sourceInwardPrintedAt: { type: Date, default: null },
+  sourceInwardPrintedByName: { type: String, default: '' },
   issuedBy: { type: String, required: true },       // username
   issuedByName: { type: String, default: '' },
   issuedAt: { type: Date, default: Date.now },
@@ -26,5 +37,7 @@ const issuanceSchema = new mongoose.Schema({
 issuanceSchema.index({ materialCode: 1, issuedAt: -1 });
 issuanceSchema.index({ status: 1 });
 issuanceSchema.index({ qrLookupValue: 1 });
+issuanceSchema.index({ sourceLabelId: 1 });
+issuanceSchema.index({ vendorName: 1 });
 
 module.exports = mongoose.model('Issuance', issuanceSchema);
